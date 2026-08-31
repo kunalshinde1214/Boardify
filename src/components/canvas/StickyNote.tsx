@@ -12,7 +12,49 @@ import {
   TriggerBadgeIcon,
   UIBadgeIcon,
   WebMCPIcon,
+  OpenAIIcon,
+  GeminiIcon,
+  AnthropicIcon,
+  FirebaseIcon,
+  GitHubIcon,
+  NextjsIcon,
+  PostgreSQLIcon,
+  RedisIcon,
+  DockerIcon,
+  PythonIcon,
+  TypeScriptIcon,
+  StripeIcon,
+  SlackIcon,
+  DiscordIcon,
+  FigmaIcon,
+  LinearIcon,
+  VercelIcon,
+  SupabaseIcon,
 } from '@/components/ui/BrandIcons';
+
+function resolveBrandIcon(title: string): React.ComponentType<{ className?: string; size?: number }> | null {
+  const t = title.toLowerCase();
+  if (t.includes('openai') || t.includes('gpt')) return OpenAIIcon;
+  if (t.includes('gemini')) return GeminiIcon;
+  if (t.includes('claude') || t.includes('anthropic')) return AnthropicIcon;
+  if (t.includes('firebase') || t.includes('firestore')) return FirebaseIcon;
+  if (t.includes('github')) return GitHubIcon;
+  if (t.includes('next.js') || t.includes('nextjs')) return NextjsIcon;
+  if (t.includes('postgres') || t.includes('sql')) return PostgreSQLIcon;
+  if (t.includes('redis')) return RedisIcon;
+  if (t.includes('docker') || t.includes('container')) return DockerIcon;
+  if (t.includes('python')) return PythonIcon;
+  if (t.includes('typescript') || t.includes('ts')) return TypeScriptIcon;
+  if (t.includes('stripe') || t.includes('billing')) return StripeIcon;
+  if (t.includes('slack')) return SlackIcon;
+  if (t.includes('discord')) return DiscordIcon;
+  if (t.includes('figma')) return FigmaIcon;
+  if (t.includes('linear')) return LinearIcon;
+  if (t.includes('vercel')) return VercelIcon;
+  if (t.includes('supabase')) return SupabaseIcon;
+  if (t.includes('webmcp')) return WebMCPIcon;
+  return null;
+}
 
 const COLOR_MAP: Record<NoteColor, string> = {
   butter: '#FFE9A8',
@@ -140,17 +182,31 @@ export function StickyNote({
           )}
         </div>
 
-        {/* Specialized Tool / Node Type Badge if available */}
-        {node.nodeType && node.nodeType !== 'default' && NODE_TYPE_CONFIG[node.nodeType] && (
-          <div
-            className={`flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded text-white shadow-xs ${
-              NODE_TYPE_CONFIG[node.nodeType].color
-            }`}
-          >
-            {React.createElement(NODE_TYPE_CONFIG[node.nodeType].icon, { className: 'w-2.5 h-2.5' })}
-            <span>{NODE_TYPE_CONFIG[node.nodeType].label}</span>
-          </div>
-        )}
+        {/* Specialized Tool / Node Type Badge or Brand Icon */}
+        {(() => {
+          const Brand = resolveBrandIcon(node.title + ' ' + (node.body || ''));
+          if (Brand) {
+            return (
+              <div className="flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded text-white bg-[#1D1A16] shadow-xs">
+                <Brand size={11} className="w-3 h-3 text-amber-300" />
+                <span className="truncate max-w-[80px]">{node.title.split(/[:\s]/)[0]}</span>
+              </div>
+            );
+          }
+          if (node.nodeType && node.nodeType !== 'default' && NODE_TYPE_CONFIG[node.nodeType]) {
+            return (
+              <div
+                className={`flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded text-white shadow-xs ${
+                  NODE_TYPE_CONFIG[node.nodeType].color
+                }`}
+              >
+                {React.createElement(NODE_TYPE_CONFIG[node.nodeType].icon, { className: 'w-2.5 h-2.5' })}
+                <span>{NODE_TYPE_CONFIG[node.nodeType].label}</span>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
 
       {/* Highlight Callout Flag */}
