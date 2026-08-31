@@ -1,5 +1,6 @@
-import { WebMCPToolDef, CanvasNode, CanvasEdge, ToolLogEntry, NoteColor } from './types';
+import { WebMCPToolDef, CanvasNode, CanvasEdge, ToolLogEntry, NoteColor, NodeType } from './types';
 import {
+  calculateSmartFlowTargets,
   calculateClusterTargets,
   calculateTimelineTargets,
   calculateKanbanTargets,
@@ -13,7 +14,9 @@ import {
 export interface WebMCPContextActions {
   getNodes: () => CanvasNode[];
   getEdges: () => CanvasEdge[];
-  addNode: (node: Omit<CanvasNode, 'id' | 'created'> & { id?: string }) => CanvasNode;
+  addNode: (
+    node: Omit<CanvasNode, 'id' | 'created'> & { id?: string; nodeType?: NodeType }
+  ) => CanvasNode;
   updateNode: (id: string, updates: Partial<CanvasNode>) => boolean;
   deleteNode: (id: string) => boolean;
   connectNodes: (sourceId: string, targetId: string, label?: string) => CanvasEdge | null;
@@ -30,7 +33,7 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
   // 1. get_canvas_state
   tools.get_canvas_state = {
     name: 'get_canvas_state',
-    description: 'Read the full board: all notes (id, title, body, position, color, author) and all directed links. Call this first to understand the canvas before taking action.',
+    description: 'Read the full board: all notes (id, title, body, position, color, author, nodeType) and all directed links. Call this first to understand the canvas before taking action.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -51,6 +54,7 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
           width: n.width,
           color: n.color,
           author: n.author,
+          nodeType: n.nodeType || 'default',
           tags: n.tags || [],
         })),
         links: edges.map(e => ({
@@ -79,6 +83,11 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
           enum: ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'],
           description: 'Color of the sticky note',
         },
+        nodeType: {
+          type: 'string',
+          enum: ['default', 'agent', 'tool', 'database', 'api', 'cloud', 'auth', 'trigger', 'ui'],
+          description: 'Architectural role badge',
+        },
       },
       required: ['title'],
     },
@@ -101,29 +110,33 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
         y = free.y;
       }
 
-      const validColors: NoteColor[] = ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'];
-      const color = validColors.includes(input.color as NoteColor)
-        ? (input.color as NoteColor)
-        : 'slate';
-
-      const newNode = actions.addNode({
-        title: title.slice(0, 100),
-        body: String(input.body || '').slice(0, 1000),
+      const color = (input.color as NoteColor) || 'butter';
+      const nodeType = (input.nodeType as NodeType) || 'default';
+      const created = actions.addNode({
+        title,
+        body: String(input.body || ''),
         x,
         y,
         width: 230,
         color,
         author: 'agent',
+        nodeType,
       });
 
-      actions.highlightNode(newNode.id, 'Agent created note');
+      actions.addLog({
+        toolName: 'add_idea_node',
+        input: { title, color, nodeType },
+        output: { id: created.id, x, y },
+        source: 'agent',
+      });
 
       return {
         success: true,
-        node_id: newNode.id,
-        x: newNode.x,
-        y: newNode.y,
-        title: newNode.title,
+        node_id: created.id,
+        title: created.title,
+        x: created.x,
+        y: created.y,
+        color: created.color,
       };
     },
   };
@@ -131,152 +144,219 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
   // 3. update_node
   tools.update_node = {
     name: 'update_node',
-    description: 'Modify an existing sticky note\'s title, body, color, or canvas position.',
+    description: 'Update the text content, color, or position of an existing note.',
     inputSchema: {
       type: 'object',
       properties: {
-        node_id: { type: 'string', description: 'ID of the node to update (e.g. "n1")' },
-        title: { type: 'string', description: 'New title' },
-        body: { type: 'string', description: 'New body text' },
+        node_id: { type: 'string', description: 'ID of the node to update' },
+        title: { type: 'string', description: 'New title (optional)' },
+        body: { type: 'string', description: 'New body (optional)' },
         color: {
           type: 'string',
           enum: ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'],
-          description: 'New color',
+          description: 'New color (optional)',
         },
-        x: { type: 'number', description: 'New canvas X position' },
-        y: { type: 'number', description: 'New canvas Y position' },
+        x: { type: 'number', description: 'New X position (optional)' },
+        y: { type: 'number', description: 'New Y position (optional)' },
       },
       required: ['node_id'],
     },
     run: input => {
-      const nodeId = String(input.node_id || '');
+      const id = String(input.node_id || '').trim();
+      if (!id) return { success: false, error: 'node_id is required' };
+
       const updates: Partial<CanvasNode> = {};
+      if (input.title !== undefined) updates.title = String(input.title);
+      if (input.body !== undefined) updates.body = String(input.body);
+      if (input.color !== undefined) updates.color = input.color as NoteColor;
+      if (typeof input.x === 'number') updates.x = input.x;
+      if (typeof input.y === 'number') updates.y = input.y;
 
-      if (input.title !== undefined) updates.title = String(input.title).slice(0, 100);
-      if (input.body !== undefined) updates.body = String(input.body).slice(0, 1000);
-      if (input.color) updates.color = input.color as NoteColor;
-      if (Number.isFinite(input.x)) updates.x = input.x as number;
-      if (Number.isFinite(input.y)) updates.y = input.y as number;
+      const ok = actions.updateNode(id, updates);
+      if (!ok) return { success: false, error: `Node ${id} not found` };
 
-      const ok = actions.updateNode(nodeId, updates);
-      if (!ok) return { success: false, error: `Node ${nodeId} not found` };
+      actions.addLog({
+        toolName: 'update_node',
+        input: { node_id: id, updates },
+        output: { success: true },
+        source: 'agent',
+      });
 
-      actions.highlightNode(nodeId, 'Updated');
-      return { success: true, node_id: nodeId };
+      return { success: true, node_id: id, updated_fields: Object.keys(updates) };
     },
   };
 
   // 4. delete_node
   tools.delete_node = {
     name: 'delete_node',
-    description: 'Delete a note from the canvas and cascade-remove any links attached to it.',
+    description: 'Delete a single note from the canvas. Any connection wires attached to it are cleaned up automatically.',
     inputSchema: {
       type: 'object',
       properties: {
-        node_id: { type: 'string', description: 'ID of the node to remove' },
+        node_id: { type: 'string', description: 'ID of the node to delete' },
       },
       required: ['node_id'],
     },
     run: input => {
-      const nodeId = String(input.node_id || '');
-      const ok = actions.deleteNode(nodeId);
-      if (!ok) return { success: false, error: `Node ${nodeId} not found` };
-      return { success: true, node_id: nodeId };
+      const id = String(input.node_id || '').trim();
+      if (!id) return { success: false, error: 'node_id is required' };
+
+      const ok = actions.deleteNode(id);
+      if (!ok) return { success: false, error: `Node ${id} not found` };
+
+      actions.addLog({
+        toolName: 'delete_node',
+        input: { node_id: id },
+        output: { success: true },
+        source: 'agent',
+      });
+
+      return { success: true, deleted_node_id: id };
     },
   };
 
   // 5. connect_nodes
   tools.connect_nodes = {
     name: 'connect_nodes',
-    description: 'Draw a directed link from one note to another with an optional relationship label (e.g. "pairs with", "causes", "blocks").',
+    description: 'Draw a directional connection wire between two notes with an optional semantic relationship label.',
     inputSchema: {
       type: 'object',
       properties: {
-        source_id: { type: 'string', description: 'Source node ID' },
-        target_id: { type: 'string', description: 'Target node ID' },
-        label: { type: 'string', description: 'Short relationship label shown on the wire' },
+        source_id: { type: 'string', description: 'ID of the origin node' },
+        target_id: { type: 'string', description: 'ID of the destination node' },
+        label: { type: 'string', description: 'Relationship description (e.g. "leads to", "pro", "con", "depends on")' },
       },
       required: ['source_id', 'target_id'],
     },
     run: input => {
-      const sourceId = String(input.source_id || '');
-      const targetId = String(input.target_id || '');
-      const label = input.label ? String(input.label).slice(0, 50) : '';
+      const src = String(input.source_id || '').trim();
+      const tgt = String(input.target_id || '').trim();
+      const label = String(input.label || '').trim();
 
-      const edge = actions.connectNodes(sourceId, targetId, label);
-      if (!edge) return { success: false, error: 'Could not connect notes (invalid IDs or duplicate link)' };
+      if (!src || !tgt) return { success: false, error: 'source_id and target_id are required' };
 
-      return { success: true, link_id: edge.id, from: edge.from, to: edge.to, label: edge.label };
+      const edge = actions.connectNodes(src, tgt, label);
+      if (!edge) return { success: false, error: 'Could not create link (nodes may already be connected or missing)' };
+
+      actions.addLog({
+        toolName: 'connect_nodes',
+        input: { source_id: src, target_id: tgt, label },
+        output: { link_id: edge.id },
+        source: 'agent',
+      });
+
+      return { success: true, link_id: edge.id, source: src, target: tgt, label };
     },
   };
 
   // 6. arrange_layout
   tools.arrange_layout = {
     name: 'arrange_layout',
-    description: 'Auto-arrange all sticky notes using an intelligent spatial algorithm ("clusters", "timeline", "kanban", or "grid").',
+    description: 'Smoothly rearrange all notes on the canvas using an organizational preset.',
     inputSchema: {
       type: 'object',
       properties: {
-        layout: {
+        preset: {
           type: 'string',
-          enum: ['clusters', 'timeline', 'kanban', 'grid'],
+          enum: ['smart_flow', 'clusters', 'timeline', 'kanban', 'grid'],
           description: 'Layout algorithm to apply',
         },
       },
+      required: ['preset'],
     },
     run: input => {
+      const preset = String(input.preset || 'smart_flow');
       const nodes = actions.getNodes();
       const edges = actions.getEdges();
-      if (!nodes.length) return { success: false, error: 'Board is empty' };
 
-      const layoutType = String(input.layout || 'clusters');
+      if (!nodes.length) return { success: false, error: 'Board has no notes to arrange' };
+
       let targets: Map<string, { x: number; y: number }>;
-
-      switch (layoutType) {
-        case 'timeline':
-          targets = calculateTimelineTargets(nodes);
-          break;
-        case 'kanban':
-          targets = calculateKanbanTargets(nodes);
-          break;
-        case 'grid':
-          targets = calculateGridTargets(nodes);
-          break;
-        case 'clusters':
-        default:
-          targets = calculateClusterTargets(nodes, edges);
-          break;
-      }
+      if (preset === 'smart_flow') targets = calculateSmartFlowTargets(nodes, edges);
+      else if (preset === 'clusters') targets = calculateClusterTargets(nodes, edges);
+      else if (preset === 'timeline') targets = calculateTimelineTargets(nodes);
+      else if (preset === 'kanban') targets = calculateKanbanTargets(nodes);
+      else targets = calculateGridTargets(nodes);
 
       actions.animateLayout(targets);
-      return { success: true, layout: layoutType, moved_count: targets.size };
+
+      actions.addLog({
+        toolName: 'arrange_layout',
+        input: { preset },
+        output: { count: targets.size },
+        source: 'agent',
+      });
+
+      return { success: true, preset, notes_arranged: targets.size };
     },
   };
 
   // 7. highlight_node
   tools.highlight_node = {
     name: 'highlight_node',
-    description: 'Pan camera to a note and trigger an animated attention pulse with a speech flag callout to direct human focus.',
+    description: 'Pan the camera directly to a specific note and render a glowing beacon with an explanation thought bubble.',
     inputSchema: {
       type: 'object',
       properties: {
-        node_id: { type: 'string', description: 'ID of the node to highlight' },
-        reason: { type: 'string', description: 'Short reason displayed in the agent callout flag' },
+        node_id: { type: 'string', description: 'ID of the node to focus' },
+        reason: { type: 'string', description: 'Short note explaining why the agent is focusing here' },
       },
       required: ['node_id'],
     },
     run: input => {
-      const nodeId = String(input.node_id || '');
-      const reason = input.reason ? String(input.reason).slice(0, 90) : undefined;
-      actions.highlightNode(nodeId, reason);
-      return { success: true, node_id: nodeId };
+      const id = String(input.node_id || '').trim();
+      const reason = input.reason ? String(input.reason) : 'Agent spotlight';
+
+      const nodes = actions.getNodes();
+      const target = nodes.find(n => n.id === id);
+      if (!target) return { success: false, error: `Node ${id} not found` };
+
+      actions.highlightNode(id, reason);
+
+      actions.addLog({
+        toolName: 'highlight_node',
+        input: { node_id: id, reason },
+        output: { focused: target.title },
+        source: 'agent',
+      });
+
+      return { success: true, node_id: id, title: target.title, reason };
     },
   };
 
-  // 8. export_canvas
+  // 8. clear_canvas
+  tools.clear_canvas = {
+    name: 'clear_canvas',
+    description: 'Wipe all notes and links from the canvas to start completely fresh. Destructive action; requires confirm: true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        confirm: { type: 'boolean', description: 'Must be explicitly set to true to execute' },
+      },
+      required: ['confirm'],
+    },
+    run: input => {
+      if (input.confirm !== true) {
+        return { success: false, error: 'Confirmation required: set { confirm: true } to clear the canvas' };
+      }
+
+      actions.clearCanvas();
+
+      actions.addLog({
+        toolName: 'clear_canvas',
+        input: { confirm: true },
+        output: { success: true },
+        source: 'agent',
+      });
+
+      return { success: true, message: 'Canvas cleared' };
+    },
+  };
+
+  // 9. export_canvas
   tools.export_canvas = {
     name: 'export_canvas',
-    description: 'Export board into structured Markdown outline, Mermaid flowchart, or full JSON graph format.',
+    description: 'Export the current canvas as a formatted Markdown brief, Mermaid relationship diagram, or JSON state.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -286,116 +366,76 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
           description: 'Export format',
         },
       },
+      required: ['format'],
     },
     run: input => {
+      const format = String(input.format || 'markdown');
       const nodes = actions.getNodes();
       const edges = actions.getEdges();
-      const fmt = String(input.format || 'markdown').toLowerCase();
 
       let content = '';
-      if (fmt === 'mermaid') {
-        content = generateMermaidExport(nodes, edges);
-      } else if (fmt === 'json') {
-        content = JSON.stringify({ nodes, edges }, null, 2);
-      } else {
-        content = generateMarkdownExport(nodes, edges);
-      }
+      if (format === 'mermaid') content = generateMermaidExport(nodes, edges);
+      else if (format === 'json') content = JSON.stringify({ nodes, edges }, null, 2);
+      else content = generateMarkdownExport(nodes, edges);
 
-      return {
-        success: true,
-        format: fmt,
-        note_count: nodes.length,
-        link_count: edges.length,
-        content,
-      };
-    },
-  };
-
-  // 9. clear_canvas
-  tools.clear_canvas = {
-    name: 'clear_canvas',
-    description: 'Wipe all notes and links from the canvas. Requires confirm: true as a safety guard.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        confirm: { type: 'boolean', description: 'Must be true to execute canvas wipe' },
-      },
-      required: ['confirm'],
-    },
-    run: input => {
-      if (input.confirm !== true) {
-        return { success: false, error: 'Refused: confirm: true must be provided to wipe canvas' };
-      }
-      actions.clearCanvas();
-      return { success: true, message: 'Canvas cleared' };
+      return { success: true, format, content };
     },
   };
 
   // 10. batch_create_nodes
   tools.batch_create_nodes = {
     name: 'batch_create_nodes',
-    description: 'Create multiple linked sticky notes in a single atomic tool call (ideal for frameworks like SWOT, pros/cons, or brainstorms).',
+    description: 'Create multiple connected notes at once (ideal for SWOT matrices, frameworks, or multi-step roadmaps).',
     inputSchema: {
       type: 'object',
       properties: {
-        nodes: {
+        items: {
           type: 'array',
-          description: 'Array of notes to create with optional title, body, color, and x/y',
+          description: 'Array of nodes to create with titles, bodies, and colors',
         },
         links: {
           type: 'array',
-          description: 'Array of link definitions between created nodes by index { fromIndex, toIndex, label }',
+          description: 'Array of links connecting the new nodes by title or index',
         },
       },
-      required: ['nodes'],
+      required: ['items'],
     },
     run: input => {
-      const rawNodes = Array.isArray(input.nodes) ? input.nodes : [];
-      if (!rawNodes.length) return { success: false, error: 'nodes array cannot be empty' };
-
-      const existingNodes = actions.getNodes();
-      const centroid = getCentroid(existingNodes);
-      let startX = centroid.x + 200;
-      let startY = centroid.y - (rawNodes.length * 70);
+      const items = Array.isArray(input.items) ? input.items : [];
+      if (!items.length) return { success: false, error: 'items array is required and cannot be empty' };
 
       const createdList: CanvasNode[] = [];
-      const validColors: NoteColor[] = ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'];
+      const titleToId = new Map<string, string>();
 
-      rawNodes.forEach((n, idx) => {
-        const title = String((n as Record<string, unknown>).title || `Idea ${idx + 1}`);
-        const body = String((n as Record<string, unknown>).body || '');
-        const c = (n as Record<string, unknown>).color as NoteColor;
-        const color = validColors.includes(c) ? c : validColors[idx % validColors.length];
-
-        const free = findFreeSpot(
-          [...existingNodes, ...createdList],
-          Number.isFinite((n as Record<string, unknown>).x) ? ((n as Record<string, unknown>).x as number) : startX,
-          Number.isFinite((n as Record<string, unknown>).y) ? ((n as Record<string, unknown>).y as number) : startY
-        );
-
-        const node = actions.addNode({
-          title: title.slice(0, 100),
-          body: body.slice(0, 1000),
-          x: free.x,
-          y: free.y,
+      items.forEach((item: any, idx: number) => {
+        const created = actions.addNode({
+          title: String(item.title || `Idea ${idx + 1}`),
+          body: String(item.body || ''),
+          x: typeof item.x === 'number' ? item.x : idx * 260 - 260,
+          y: typeof item.y === 'number' ? item.y : 100,
           width: 230,
-          color,
+          color: (item.color as NoteColor) || 'butter',
           author: 'agent',
+          nodeType: (item.nodeType as NodeType) || 'default',
         });
-        createdList.push(node);
-        startY += 150;
+        createdList.push(created);
+        titleToId.set(created.title.toLowerCase().trim(), created.id);
       });
 
-      // Connect links if provided
-      const rawLinks = Array.isArray(input.links) ? input.links : [];
-      rawLinks.forEach(l => {
-        const fromIdx = (l as Record<string, unknown>).fromIndex as number;
-        const toIdx = (l as Record<string, unknown>).toIndex as number;
-        const label = String((l as Record<string, unknown>).label || '');
-        if (createdList[fromIdx] && createdList[toIdx]) {
-          actions.connectNodes(createdList[fromIdx].id, createdList[toIdx].id, label);
-        }
-      });
+      if (Array.isArray(input.links)) {
+        input.links.forEach((l: any) => {
+          let srcId = l.source_id;
+          let tgtId = l.target_id;
+          if (!srcId && l.sourceTitle) srcId = titleToId.get(String(l.sourceTitle).toLowerCase().trim());
+          if (!tgtId && l.targetTitle) tgtId = titleToId.get(String(l.targetTitle).toLowerCase().trim());
+
+          if (srcId && tgtId) {
+            actions.connectNodes(srcId, tgtId, l.label || '');
+          }
+        });
+      }
+
+      actions.animateLayout(calculateSmartFlowTargets(actions.getNodes(), actions.getEdges()));
 
       return {
         success: true,
@@ -490,47 +530,72 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
   return tools;
 }
 
+/**
+ * Registers all tools onto window.document.modelContext following the official WebMCP standard.
+ * If the browser does not natively provide document.modelContext, an automatic polyfill is injected
+ * so ChatGPT, extensions, and console scripts can execute tools seamlessly in ANY browser.
+ */
 export function registerWebMCP(tools: Record<string, WebMCPToolDef>): boolean {
   if (typeof window === 'undefined') return false;
 
-  const win = window as unknown as {
-    document: {
-      modelContext?: {
-        registerTool: (tool: {
-          name: string;
-          description: string;
-          inputSchema: unknown;
-          execute: (input: Record<string, unknown>) => Promise<unknown> | unknown;
-        }) => void;
-      };
-    };
-  };
+  const win = window as any;
 
-  const mc = win.document?.modelContext;
-  if (mc && typeof mc.registerTool === 'function') {
-    try {
-      Object.values(tools).forEach(t => {
-        mc.registerTool({
+  // Initialize document.modelContext standard polyfill if not already present
+  if (!win.document.modelContext) {
+    win.document.modelContext = {
+      _registeredTools: new Map<string, any>(),
+      registerTool: function (tool: any) {
+        this._registeredTools.set(tool.name, tool);
+      },
+      getTools: function () {
+        return Array.from(this._registeredTools.values());
+      },
+      listTools: function () {
+        return Array.from(this._registeredTools.values()).map((t: any) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
-          execute: async input => {
-            const start = performance.now();
-            let result: Record<string, unknown>;
-            try {
-              result = await t.run(input || {});
-            } catch (err) {
-              result = { success: false, error: String(err instanceof Error ? err.message : err) };
-            }
-            const durationMs = Math.round(performance.now() - start);
-            return { ...result, _executed_via: 'WebMCP', duration_ms: durationMs };
-          },
-        });
-      });
-      return true;
-    } catch {
-      return false;
-    }
+        }));
+      },
+      executeTool: async function (name: string, input: any = {}) {
+        const tool = this._registeredTools.get(name);
+        if (!tool) throw new Error(`WebMCP Tool "${name}" not found.`);
+        return await tool.execute(input);
+      },
+    };
   }
-  return false;
+
+  const mc = win.document.modelContext;
+
+  try {
+    Object.values(tools).forEach(t => {
+      mc.registerTool({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        execute: async (input: Record<string, unknown>) => {
+          const start = performance.now();
+          let result: Record<string, unknown>;
+          try {
+            result = await t.run(input || {});
+          } catch (err) {
+            result = { success: false, error: String(err instanceof Error ? err.message : err) };
+          }
+          const durationMs = Math.round(performance.now() - start);
+          return { ...result, _executed_via: 'WebMCP', duration_ms: durationMs };
+        },
+      });
+    });
+
+    console.log(
+      `%c[WebMCP v1.0 Standard]%c Registered ${Object.keys(tools).length} tools on document.modelContext. Try: document.modelContext.listTools()`,
+      'background: #E24E1B; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold;',
+      'color: #1D1A16; font-weight: bold;'
+    );
+
+    return true;
+  } catch (err) {
+    console.warn('WebMCP registration warning:', err);
+    return false;
+  }
 }

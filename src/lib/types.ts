@@ -66,7 +66,7 @@ export interface ToolLogEntry {
   input: Record<string, unknown>;
   output?: Record<string, unknown>;
   success?: boolean;
-  source: 'webmcp' | 'demo' | 'ui';
+  source: 'webmcp' | 'demo' | 'ui' | 'agent';
   durationMs?: number;
 }
 

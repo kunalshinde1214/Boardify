@@ -553,6 +553,14 @@ function CanvasAppInner() {
           item.nodeType || 'default'
         );
         createdNodeMap.set(item.title.toLowerCase().trim(), node.id);
+
+        addLogEntry({
+          toolName: 'add_idea_node',
+          input: { title: item.title, color: item.color, nodeType: item.nodeType },
+          output: { id: node.id, x: free.x, y: free.y },
+          source: 'agent',
+        });
+
         spawnY += 150;
       });
 
@@ -561,7 +569,15 @@ function CanvasAppInner() {
         const srcId = createdNodeMap.get(link.sourceTitle.toLowerCase().trim());
         const tgtId = createdNodeMap.get(link.targetTitle.toLowerCase().trim());
         if (srcId && tgtId) {
-          handleConnectNodes(srcId, tgtId, link.label);
+          const edge = handleConnectNodes(srcId, tgtId, link.label);
+          if (edge) {
+            addLogEntry({
+              toolName: 'connect_nodes',
+              input: { source_id: srcId, target_id: tgtId, label: link.label },
+              output: { link_id: edge.id },
+              source: 'agent',
+            });
+          }
         }
       });
 
