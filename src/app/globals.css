@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --paper: #F4EFE4;
+    --panel: #FFFDF6;
+    --ink: #1D1A16;
+    --ink-soft: #6B6353;
+    --line: #DCD4C2;
+    --acc: #E24E1B;
+    --acc-dark: #B33A10;
+    --butter: #FFE9A8;
+    --sage: #DCEBC8;
+    --coral: #FFD8C7;
+    --slate: #DAE5E6;
+    --lavender: #E8DEFF;
+    --mint: #C7F3E3;
+
+    --font-fraunces: 'Fraunces', serif;
+    --font-space: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-caveat: 'Caveat', cursive;
+    --font-kalam: 'Kalam', cursive;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-space);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    selection-background-color: rgba(226, 78, 27, 0.22);
+  }
+
+  ::selection {
+    background: rgba(226, 78, 27, 0.25);
+    color: var(--ink);
+  }
+}
+
+/* Tactile canvas grid */
+.canvas-grid-bg {
+  background-color: var(--paper);
+  background-image: radial-gradient(circle, rgba(29, 26, 22, 0.13) 1.1px, transparent 1.25px);
+}
+
+/* Tape sticker decoration */
+.sticky-tape {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 58px;
+  height: 17px;
+  transform: translateX(-50%) rotate(-3deg);
+  background: rgba(255, 252, 240, 0.75);
+  border: 1px solid rgba(29, 26, 22, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Pop animation for newly spawned sticky notes */
+@keyframes notePop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-note-pop {
+  animation: notePop 0.4s cubic-bezier(0.2, 1.3, 0.4, 1) forwards;
+}
+
+/* Attention pulse effect */
+@keyframes agentPulse {
+  0% {
+    opacity: 1;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+
+.animate-pulse-ring {
+  animation: agentPulse 0.9s ease-out infinite;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(29, 26, 22, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(29, 26, 22, 0.4);
+}
+
+/* Tactile button styling */
+.btn-tactile {
+  border: 1.5px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: all 0.12s ease;
+}
+.btn-tactile:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.btn-tactile:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+/* Panel container */
+.panel-card {
+  background: var(--panel);
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 4px 4px 0 rgba(29, 26, 22, 0.12);
+}

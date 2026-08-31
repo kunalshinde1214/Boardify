@@ -1,0 +1,2290 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boardify — the whiteboard where agents pull up a chair</title>
+    <meta name="description"
+        content="Boardify is a spatial whiteboard that exposes 9 tools on document.modelContext (WebMCP), letting browser agents read, build and arrange ideas alongside humans on one shared canvas.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;1,600&family=Space+Grotesk:wght@400;500;600;700&family=Caveat:wght@600;700&family=Kalam:wght@400;700&display=swap"
+        rel="stylesheet">
+    <script type="application/json" id="agent-guide">{}</script>
+    <style>
+        :root {
+            --paper: #F4EFE4;
+            --panel: #FFFDF6;
+            --ink: #1D1A16;
+            --ink-soft: #6B6353;
+            --line: #DCD4C2;
+            --acc: #E24E1B;
+            --acc-dark: #B33A10;
+            --butter: #FFE9A8;
+            --sage: #DCEBC8;
+            --coral: #FFD8C7;
+            --slate: #DAE5E6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--paper);
+            color: var(--ink);
+            overscroll-behavior: none
+        }
+
+        ::selection {
+            background: rgba(226, 78, 27, .22)
+        }
+
+        button {
+            font-family: inherit;
+            color: inherit;
+            background: none;
+            border: none;
+            cursor: pointer
+        }
+
+        svg {
+            display: block
+        }
+
+        /* ---------- canvas ---------- */
+        #board {
+            position: fixed;
+            inset: 0;
+            cursor: grab;
+            touch-action: none;
+            background-color: var(--paper);
+            background-image: radial-gradient(circle, rgba(29, 26, 22, .13) 1.1px, transparent 1.25px);
+        }
+
+        #board.panning {
+            cursor: grabbing
+        }
+
+        #world {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform-origin: 0 0
+        }
+
+        #wires {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 10px;
+            height: 10px;
+            overflow: visible;
+            pointer-events: none
+        }
+
+        .ehit {
+            pointer-events: stroke;
+            cursor: pointer
+        }
+
+        g.edge .eline {
+            stroke: #57503F;
+            stroke-width: 1.8;
+            fill: none;
+            transition: stroke .12s
+        }
+
+        g.edge:hover .eline {
+            stroke: var(--acc)
+        }
+
+        g.edge.sel .eline {
+            stroke: var(--acc);
+            stroke-width: 2.3
+        }
+
+        .elabel {
+            font: 600 11px 'Space Grotesk';
+            letter-spacing: .03em;
+            fill: var(--ink);
+            stroke: var(--paper);
+            stroke-width: 5px;
+            paint-order: stroke;
+            text-anchor: middle;
+            pointer-events: none
+        }
+
+        .etemp {
+            stroke: var(--acc);
+            stroke-width: 2;
+            stroke-dasharray: 5 5;
+            fill: none
+        }
+
+        /* ---------- notes ---------- */
+        .note {
+            position: absolute;
+            width: 210px;
+            min-height: 70px;
+            background: var(--nc, var(--butter));
+            border: 1px solid rgba(29, 26, 22, .16);
+            border-radius: 4px;
+            padding: 16px 15px 13px;
+            transform: rotate(var(--rot, 0deg));
+            box-shadow: 2.5px 3.5px 0 rgba(29, 26, 22, .09);
+            cursor: grab;
+            user-select: none;
+            touch-action: none
+        }
+
+        .note:active {
+            cursor: grabbing
+        }
+
+        .note.spawn {
+            animation: pop .45s cubic-bezier(.2, 1.4, .4, 1)
+        }
+
+        @keyframes pop {
+            0% {
+                opacity: 0;
+                transform: rotate(var(--rot, 0deg)) scale(.7) translateY(16px)
+            }
+
+            100% {
+                opacity: 1;
+                transform: rotate(var(--rot, 0deg)) scale(1)
+            }
+        }
+
+        .tape {
+            position: absolute;
+            top: -9px;
+            left: 50%;
+            width: 58px;
+            height: 17px;
+            transform: translateX(-50%) rotate(-3deg);
+            background: rgba(255, 252, 240, .72);
+            border: 1px solid rgba(29, 26, 22, .07)
+        }
+
+        .chip {
+            position: absolute;
+            top: -10px;
+            left: 12px;
+            font: 700 9.5px/1 'Space Grotesk';
+            letter-spacing: .13em;
+            padding: 4px 7px 3px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 4px
+        }
+
+        .chip.you {
+            background: var(--ink);
+            color: var(--paper)
+        }
+
+        .chip.agent {
+            background: var(--acc);
+            color: #fff
+        }
+
+        .n-title {
+            font-family: 'Caveat', cursive;
+            font-weight: 700;
+            font-size: 22px;
+            line-height: 1.02;
+            min-height: 22px;
+            outline: none;
+            border-radius: 3px;
+            word-wrap: break-word
+        }
+
+        .n-body {
+            font-family: 'Kalam', cursive;
+            font-size: 13.5px;
+            line-height: 1.42;
+            color: #403A2F;
+            margin-top: 6px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            outline: none;
+            min-height: 14px
+        }
+
+        [contenteditable] {
+            box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--ink);
+            cursor: text;
+            user-select: text
+        }
+
+        .note.sel {
+            outline: 2px solid var(--ink);
+            outline-offset: 2.5px;
+            z-index: 6
+        }
+
+        .port {
+            position: absolute;
+            right: -9px;
+            top: calc(50% - 9px);
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--panel);
+            border: 1.7px solid var(--ink);
+            opacity: 0;
+            transition: opacity .15s, background .15s;
+            cursor: crosshair
+        }
+
+        .note:hover .port,
+        .note.sel .port {
+            opacity: 1
+        }
+
+        .port:hover {
+            background: var(--acc);
+            border-color: var(--acc)
+        }
+
+        .note-tools {
+            position: absolute;
+            top: -44px;
+            left: 50%;
+            transform: translateX(-50%) rotate(calc(var(--rot, 0deg)*-1));
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: var(--panel);
+            border: 1.5px solid var(--ink);
+            border-radius: 9px;
+            padding: 6px 8px;
+            box-shadow: 3px 3px 0 rgba(29, 26, 22, .13);
+            white-space: nowrap
+        }
+
+        .note.sel .note-tools {
+            display: flex
+        }
+
+        .dot {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            border: 1.4px solid rgba(29, 26, 22, .4);
+            cursor: pointer;
+            transition: transform .1s
+        }
+
+        .dot:hover {
+            transform: scale(1.18)
+        }
+
+        .dot.on {
+            outline: 2px solid var(--ink);
+            outline-offset: 1.5px
+        }
+
+        .nb {
+            width: 25px;
+            height: 25px;
+            display: grid;
+            place-items: center;
+            border-radius: 6px;
+            color: var(--ink)
+        }
+
+        .nb:hover {
+            background: var(--ink);
+            color: var(--paper)
+        }
+
+        .nb.danger:hover {
+            background: var(--acc-dark)
+        }
+
+        .note.hl {
+            z-index: 7
+        }
+
+        .note.hl::before {
+            content: "";
+            position: absolute;
+            inset: -9px;
+            border-radius: 10px;
+            border: 2.5px solid var(--acc);
+            animation: pulse .95s ease-out 3;
+            pointer-events: none
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(.95)
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.14)
+            }
+        }
+
+        .flag {
+            position: absolute;
+            bottom: calc(100% + 14px);
+            left: 50%;
+            transform: rotate(-2deg);
+            background: var(--acc);
+            color: #fff;
+            font: 600 12px 'Space Grotesk';
+            padding: 6px 10px;
+            border-radius: 7px 7px 7px 2px;
+            white-space: nowrap;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            animation: pop .3s cubic-bezier(.2, 1.4, .4, 1)
+        }
+
+        /* agent ghost cursor */
+        #ghost {
+            position: absolute;
+            z-index: 60;
+            pointer-events: none;
+            opacity: 0;
+            margin: -17px 0 0 -17px;
+            transition: left .55s cubic-bezier(.3, 1, .3, 1), top .55s cubic-bezier(.3, 1, .3, 1), opacity .3s
+        }
+
+        #ghost.on {
+            opacity: 1
+        }
+
+        .gdot {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--acc);
+            color: #fff;
+            display: grid;
+            place-items: center;
+            box-shadow: 0 0 0 6px rgba(226, 78, 27, .16)
+        }
+
+        #ghost.ping .gdot::after {
+            content: "";
+            position: absolute;
+            inset: -6px;
+            border-radius: 50%;
+            border: 2px solid var(--acc);
+            animation: pulse .8s ease-out 2
+        }
+
+        .glabel {
+            position: absolute;
+            left: 40px;
+            top: 5px;
+            font: 700 10px 'Space Grotesk';
+            letter-spacing: .16em;
+            color: var(--acc);
+            background: var(--panel);
+            border: 1.2px solid var(--acc);
+            padding: 3px 7px;
+            border-radius: 3px
+        }
+
+        /* ---------- chrome ---------- */
+        .panel {
+            position: fixed;
+            background: var(--panel);
+            border: 1.5px solid var(--ink);
+            border-radius: 12px;
+            box-shadow: 4px 4px 0 rgba(29, 26, 22, .10);
+            z-index: 100
+        }
+
+        #brand {
+            top: 16px;
+            left: 16px;
+            padding: 11px 16px 12px;
+            max-width: 280px
+        }
+
+        .b-title {
+            font-family: 'Fraunces', serif;
+            font-style: italic;
+            font-weight: 600;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .b-mark {
+            color: var(--acc);
+            display: inline-flex;
+            transform: rotate(-8deg)
+        }
+
+        .b-sub {
+            font-size: 10px;
+            letter-spacing: .13em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+            margin-top: 3px
+        }
+
+        .mcp {
+            margin-top: 9px;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 600 10px;
+            font-weight: 600;
+            letter-spacing: .06em;
+            border: 1.2px solid var(--ink);
+            padding: 4px 9px;
+            border-radius: 99px
+        }
+
+        .dotm {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            border: 1.4px solid var(--ink);
+            background: transparent
+        }
+
+        .mcp.live .dotm {
+            background: var(--acc);
+            border-color: var(--acc);
+            animation: blink 1.6s infinite
+        }
+
+        @keyframes blink {
+            50% {
+                box-shadow: 0 0 0 4px rgba(226, 78, 27, .18)
+            }
+        }
+
+        #actions {
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 7px;
+            flex-wrap: wrap;
+            max-width: calc(100vw - 32px);
+            z-index: 120
+        }
+
+        .abtn {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1.4px solid var(--ink);
+            transition: background .13s, color .13s;
+            white-space: nowrap
+        }
+
+        .abtn i {
+            display: flex
+        }
+
+        .abtn:hover {
+            background: var(--ink);
+            color: var(--paper)
+        }
+
+        .abtn.prime {
+            background: var(--ink);
+            color: var(--paper)
+        }
+
+        .abtn.prime:hover {
+            background: var(--acc);
+            border-color: var(--acc)
+        }
+
+        .abtn.danger:hover {
+            background: var(--acc-dark);
+            border-color: var(--acc-dark)
+        }
+
+        .vdiv {
+            width: 1px;
+            height: 20px;
+            background: var(--line);
+            margin: 0 4px
+        }
+
+        #studio {
+            top: 16px;
+            right: 16px;
+            width: 294px;
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 32px)
+        }
+
+        #studio.closed .p-body {
+            display: none
+        }
+
+        #studio .p-body {
+            overflow-y: auto
+        }
+
+        .p-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 11px 13px 9px;
+            border-bottom: 1px dashed var(--line)
+        }
+
+        .p-title {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: .14em
+        }
+
+        .p-title i {
+            display: flex;
+            color: var(--acc)
+        }
+
+        .p-title i.muted {
+            color: var(--ink-soft)
+        }
+
+        .p-collapse {
+            width: 24px;
+            height: 24px;
+            display: grid;
+            place-items: center;
+            border-radius: 6px;
+            color: var(--ink-soft)
+        }
+
+        .p-collapse:hover {
+            background: var(--paper);
+            color: var(--ink)
+        }
+
+        .panel.closed .p-collapse {
+            transform: rotate(180deg)
+        }
+
+        .p-note {
+            font-size: 10.5px;
+            line-height: 1.45;
+            color: var(--ink-soft);
+            padding: 10px 13px 4px
+        }
+
+        .tools-head {
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: .16em;
+            color: var(--ink-soft);
+            padding: 12px 13px 6px
+        }
+
+        .tool-list {
+            list-style: none;
+            max-height: 148px;
+            overflow-y: auto;
+            margin: 0 8px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--paper)
+        }
+
+        .tool-list li {
+            padding: 6px 9px;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            border-bottom: 1px solid var(--line)
+        }
+
+        .tool-list li:last-child {
+            border-bottom: none
+        }
+
+        .tool-list code {
+            font: 700 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--acc)
+        }
+
+        .tool-list span {
+            font-size: 9.5px;
+            line-height: 1.35;
+            color: var(--ink-soft)
+        }
+
+        #missions {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 0 13px
+        }
+
+        .mission {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            text-align: left;
+            border: 1.4px solid var(--ink);
+            border-radius: 9px;
+            padding: 8px 10px;
+            transition: background .13s, color .13s, transform .1s;
+            background: var(--panel)
+        }
+
+        .mission:hover {
+            background: var(--ink);
+            color: var(--paper);
+            transform: translateX(-2px)
+        }
+
+        .mission:disabled {
+            opacity: .45;
+            pointer-events: none
+        }
+
+        .m-ic {
+            color: var(--acc);
+            display: flex
+        }
+
+        .mission:hover .m-ic {
+            color: var(--paper)
+        }
+
+        .m-tx {
+            display: flex;
+            flex-direction: column;
+            gap: 1px
+        }
+
+        .m-tx b {
+            font-size: 12px
+        }
+
+        .m-tx small {
+            font-size: 9.5px;
+            color: var(--ink-soft)
+        }
+
+        .mission:hover .m-tx small {
+            color: rgba(255, 253, 246, .7)
+        }
+
+        .free-row {
+            display: flex;
+            gap: 6px;
+            padding: 0 13px
+        }
+
+        #freeIn {
+            flex: 1;
+            border: 1.4px solid var(--ink);
+            border-radius: 8px;
+            background: var(--paper);
+            padding: 8px 10px;
+            font: 500 12px 'Space Grotesk';
+            color: var(--ink);
+            outline: none;
+            min-width: 0
+        }
+
+        #freeIn:focus {
+            box-shadow: 2px 2px 0 rgba(226, 78, 27, .35)
+        }
+
+        .runb {
+            width: 36px;
+            border-radius: 8px;
+            background: var(--acc);
+            color: #fff;
+            display: grid;
+            place-items: center;
+            border: 1.4px solid var(--acc-dark)
+        }
+
+        .runb:hover {
+            background: var(--acc-dark)
+        }
+
+        .hint {
+            font-family: 'Kalam', cursive;
+            font-size: 12px;
+            color: var(--ink-soft);
+            padding: 7px 13px 13px;
+            line-height: 1.4
+        }
+
+        #log {
+            bottom: 16px;
+            left: 16px;
+            width: 372px;
+            display: flex;
+            flex-direction: column;
+            max-height: 230px
+        }
+
+        #log.closed .p-body {
+            display: none
+        }
+
+        #log .p-body {
+            overflow: hidden
+        }
+
+        #logLines {
+            height: 148px;
+            overflow-y: auto;
+            padding: 8px 11px;
+            font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace
+        }
+
+        .ll {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis
+        }
+
+        .lt {
+            color: #A69C86;
+            margin-right: 6px
+        }
+
+        .lsrc {
+            font-weight: 700;
+            font-size: 9px;
+            letter-spacing: .08em;
+            border: 1px solid var(--line);
+            border-radius: 3px;
+            padding: 0 3px;
+            margin-right: 6px;
+            color: var(--ink-soft)
+        }
+
+        .lsrc.webmcp {
+            color: var(--acc);
+            border-color: var(--acc)
+        }
+
+        .lsrc.demo {
+            color: #3E7A3A;
+            border-color: #3E7A3A
+        }
+
+        .lsrc.ui {
+            color: var(--ink);
+            border-color: var(--ink)
+        }
+
+        .ln {
+            font-weight: 700;
+            margin-right: 6px
+        }
+
+        .la {
+            color: var(--ink-soft)
+        }
+
+        .lr {
+            color: #3E7A3A;
+            margin-left: 6px
+        }
+
+        .lr .errc {
+            color: var(--acc-dark)
+        }
+
+        .logbtn {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            color: var(--ink-soft);
+            padding: 2px 6px;
+            border-radius: 5px
+        }
+
+        .logbtn:hover {
+            background: var(--paper);
+            color: var(--ink)
+        }
+
+        .cnt {
+            font-size: 9.5px;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 99px;
+            padding: 1px 7px;
+            margin-left: 2px
+        }
+
+        #zoomer {
+            bottom: 16px;
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 5px;
+            gap: 2px
+        }
+
+        .zbtn {
+            width: 32px;
+            height: 30px;
+            display: grid;
+            place-items: center;
+            border-radius: 7px;
+            color: var(--ink)
+        }
+
+        .zbtn:hover {
+            background: var(--ink);
+            color: var(--paper)
+        }
+
+        #zLabel {
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 3px 0
+        }
+
+        #empty {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            pointer-events: none;
+            z-index: 5
+        }
+
+        #empty div {
+            font-family: 'Kalam', cursive;
+            font-size: 19px;
+            color: var(--ink-soft);
+            text-align: center;
+            line-height: 1.5;
+            transform: rotate(-1.5deg);
+            padding: 0 30px
+        }
+
+        #toasts {
+            position: fixed;
+            bottom: 76px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 7px;
+            z-index: 300;
+            pointer-events: none
+        }
+
+        .toast {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--ink);
+            color: var(--paper);
+            font-size: 12px;
+            font-weight: 500;
+            padding: 9px 15px;
+            border-radius: 9px;
+            box-shadow: 3px 3px 0 rgba(29, 26, 22, .2);
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity .22s, transform .22s;
+            max-width: min(560px, 90vw)
+        }
+
+        .toast.in {
+            opacity: 1;
+            transform: translateY(0)
+        }
+
+        .toast .tic {
+            display: flex;
+            color: var(--butter)
+        }
+
+        .toast.ok .tic {
+            color: #9CD68F
+        }
+
+        .toast.warn .tic {
+            color: var(--coral)
+        }
+
+        #modalRoot {
+            position: fixed;
+            inset: 0;
+            z-index: 400;
+            display: none
+        }
+
+        #modalRoot.open {
+            display: block
+        }
+
+        .mbk {
+            position: absolute;
+            inset: 0;
+            background: rgba(29, 26, 22, .38)
+        }
+
+        .mcard {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            max-width: 92vw;
+            max-height: 84vh;
+            overflow-y: auto;
+            padding: 22px 24px;
+            animation: mIn .22s cubic-bezier(.2, 1.2, .4, 1)
+        }
+
+        @keyframes mIn {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -47%) scale(.96)
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1)
+            }
+        }
+
+        .m-title {
+            font-family: 'Fraunces', serif;
+            font-style: italic;
+            font-size: 23px;
+            margin-bottom: 4px
+        }
+
+        .m-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 28px;
+            height: 28px;
+            display: grid;
+            place-items: center;
+            border-radius: 7px
+        }
+
+        .m-close:hover {
+            background: var(--paper)
+        }
+
+        .m-h {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .16em;
+            color: var(--ink-soft);
+            margin: 18px 0 8px
+        }
+
+        .krow {
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            font-size: 12.5px;
+            padding: 5px 0;
+            border-bottom: 1px dashed var(--line)
+        }
+
+        .krow span:last-child {
+            color: var(--ink-soft)
+        }
+
+        kbd {
+            font: 700 10.5px ui-monospace, monospace;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-bottom-width: 2.5px;
+            border-radius: 4px;
+            padding: 1px 6px
+        }
+
+        .copy {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            border: 1.4px solid var(--ink);
+            border-radius: 9px;
+            padding: 9px 11px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background .12s;
+            text-align: left;
+            line-height: 1.4
+        }
+
+        .copy:hover {
+            background: var(--paper)
+        }
+
+        .copy i {
+            flex: none;
+            display: flex;
+            color: var(--acc)
+        }
+
+        .ttool {
+            display: flex;
+            gap: 9px;
+            font-size: 12px;
+            padding: 5px 0;
+            border-bottom: 1px dashed var(--line);
+            line-height: 1.4
+        }
+
+        .ttool code {
+            flex: none;
+            font: 700 11px ui-monospace, monospace;
+            color: var(--acc);
+            width: 150px
+        }
+
+        .mbtns {
+            display: flex;
+            gap: 8px;
+            margin-top: 18px;
+            justify-content: flex-end
+        }
+
+        .mbtn {
+            font-size: 12.5px;
+            font-weight: 700;
+            padding: 9px 16px;
+            border-radius: 9px;
+            border: 1.5px solid var(--ink)
+        }
+
+        .mbtn.solid {
+            background: var(--ink);
+            color: var(--paper)
+        }
+
+        .mbtn.acc {
+            background: var(--acc);
+            border-color: var(--acc-dark);
+            color: #fff
+        }
+
+        .mbtn.acc:hover {
+            background: var(--acc-dark)
+        }
+
+        .mbtn:not(.acc):hover {
+            background: var(--paper)
+        }
+
+        #edgeEdit {
+            position: fixed;
+            display: none;
+            z-index: 250;
+            transform: translate(-50%, -50%)
+        }
+
+        #edgeEdit input {
+            width: 170px;
+            border: 1.5px solid var(--ink);
+            border-radius: 7px;
+            background: var(--panel);
+            padding: 6px 9px;
+            font: 600 12px 'Space Grotesk';
+            outline: none;
+            text-align: center;
+            box-shadow: 3px 3px 0 rgba(29, 26, 22, .14)
+        }
+
+        @media (max-width:1300px) {
+            #log {
+                display: none
+            }
+        }
+
+        /* stays reachable via nothing — remove if unwanted */
+        @media (max-width:1100px) {
+            #studio {
+                width: 270px
+            }
+        }
+
+        @media (max-width:900px) {
+            .abtn .lbl {
+                display: none
+            }
+
+            .abtn {
+                padding: 8px 10px
+            }
+
+            #brand {
+                max-width: 220px
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="board">
+        <div id="world">
+            <svg id="wires"></svg>
+            <div id="notes"></div>
+            <div id="ghost">
+                <div class="gdot"><i data-icon="spark" data-size="15"></i></div>
+                <div class="glabel">AGENT</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="empty" style="display:none">
+        <div>The board is empty.<br>Double-click anywhere — or hand the agent a mission.</div>
+    </div>
+
+    <header id="brand" class="panel">
+        <div class="b-title"><span class="b-mark"><i data-icon="spark" data-size="19"></i></span>Boardify</div>
+        <div class="b-sub">the whiteboard where agents pull up a chair</div>
+        <div class="mcp" id="mcpPill"><span class="dotm"></span><span id="mcpText">checking WebMCP…</span></div>
+    </header>
+
+    <nav id="actions" class="panel">
+        <button class="abtn prime" id="btnAdd"><i data-icon="plus"></i><span class="lbl">New note</span></button>
+        <span class="vdiv"></span>
+        <button class="abtn" data-act="tidy"><i data-icon="layout"></i><span class="lbl">Tidy</span></button>
+        <button class="abtn" data-act="fit"><i data-icon="fit"></i><span class="lbl">Fit</span></button>
+        <button class="abtn" data-act="undo"><i data-icon="undo"></i><span class="lbl">Undo</span></button>
+        <span class="vdiv"></span>
+        <button class="abtn" data-act="export"><i data-icon="download"></i><span class="lbl">Export</span></button>
+        <button class="abtn danger" data-act="clear"><i data-icon="eraser"></i><span class="lbl">Clear</span></button>
+        <button class="abtn" data-act="help"><i data-icon="help"></i></button>
+    </nav>
+
+    <aside id="studio" class="panel">
+        <div class="p-head">
+            <div class="p-title"><i data-icon="spark"></i>AGENT STUDIO</div>
+            <button class="p-collapse" title="Collapse"><i data-icon="chevD" data-size="15"></i></button>
+        </div>
+        <div class="p-body">
+            <p class="p-note">Missions below drive the exact tool layer a WebMCP agent sees — same schemas, same execute
+                functions. Nothing is faked.</p>
+            <div class="tools-head">TOOL REGISTRY <span id="toolCount" style="letter-spacing:0"></span></div>
+            <ul id="toolList" class="tool-list"></ul>
+            <div class="tools-head">MISSIONS</div>
+            <div id="missions"></div>
+            <div class="tools-head">FREEFORM</div>
+            <div class="free-row">
+                <input id="freeIn" placeholder="tell the agent something…" autocomplete="off">
+                <button class="runb" id="freeRun" title="Run"><i data-icon="play" data-size="14"></i></button>
+            </div>
+            <p class="hint">try: “expand the selected note” · “pros and cons” · “connect welcome to agents” · “tidy” ·
+                “what do you see?”</p>
+        </div>
+    </aside>
+
+    <section id="log" class="panel">
+        <div class="p-head">
+            <div class="p-title"><i class="muted" data-icon="pulse"></i>TOOL ACTIVITY <span class="cnt"
+                    id="logCount">0</span></div>
+            <div style="display:flex;align-items:center;gap:4px">
+                <button class="logbtn" id="logClear">CLEAR</button>
+                <button class="p-collapse" title="Collapse"><i data-icon="chevD" data-size="15"></i></button>
+            </div>
+        </div>
+        <div class="p-body">
+            <div id="logLines"></div>
+        </div>
+    </section>
+
+    <div id="zoomer" class="panel">
+        <button class="zbtn" id="zIn"><i data-icon="plus" data-size="14"></i></button>
+        <div id="zLabel">100%</div>
+        <button class="zbtn" id="zOut"><i data-icon="minus" data-size="14"></i></button>
+        <button class="zbtn" id="zFit"><i data-icon="fit" data-size="14"></i></button>
+    </div>
+
+    <div id="toasts"></div>
+    <div id="modalRoot"></div>
+    <div id="edgeEdit"><input id="edgeEditIn" placeholder="link label…"></div>
+
+    <script>
+        'use strict';
+        /* ================= helpers & icons ================= */
+        const $ = s => document.querySelector(s);
+        const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
+        const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const nowT = () => new Date().toTimeString().slice(0, 8);
+        const esc = s => String(s ?? '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+        const trunc = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+        const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+        const ICONS = {
+            plus: '<path d="M10 4v12M4 10h12"/>',
+            minus: '<path d="M4 10h12"/>',
+            spark: '<path d="M10 2l2.1 5.9L18 10l-5.9 2.1L10 18l-2.1-5.9L2 10l5.9-2.1z"/>',
+            trash: '<path d="M3.5 6h13"/><path d="M8 6V4.5h4V6"/><path d="M6 6l.8 10.5h6.4L14 6"/>',
+            download: '<path d="M10 3v9m0 0L6.5 8.5M10 12l3.5-3.5"/><path d="M4 16.5h12"/>',
+            eraser: '<path d="M4 14.5l7-7 4.5 4.5-4 4H7z"/><path d="M9.2 8.7l4.6 4.6"/>',
+            layout: '<rect x="3" y="3.5" width="5.6" height="6" rx="1"/><rect x="11.4" y="3.5" width="5.6" height="6" rx="1"/><rect x="3" y="12" width="5.6" height="4.5" rx="1"/><rect x="11.4" y="12" width="5.6" height="4.5" rx="1"/>',
+            fit: '<path d="M3 7V3.5h3.5M17 7V3.5h-3.5M3 13v3.5h3.5M17 13v3.5h-3.5"/>',
+            help: '<path d="M7.4 7.4a2.6 2.6 0 1 1 3.6 2.4c-.8.35-1 1-1 1.9"/><path d="M10 15.2v.01"/>',
+            x: '<path d="M5 5l10 10M15 5L5 15"/>',
+            link: '<path d="M8.5 11.5l3-3"/><path d="M7 9 5.2 10.8a2.4 2.4 0 0 0 3.4 3.4l1.8-1.8"/><path d="M13 11l1.8-1.8a2.4 2.4 0 0 0-3.4-3.4L9.6 7.6"/>',
+            pen: '<path d="M13.2 4.2l2.6 2.6L7 15.6l-3.4.9.9-3.4z"/>',
+            chevD: '<path d="M6 8l4 4 4-4"/>',
+            play: '<path d="M7 5l8 5-8 5z"/>',
+            pulse: '<path d="M2.5 10.5h3l2-5.5 3 10 2-4.5h5"/>',
+            check: '<path d="M4.5 10.5l3.5 3.5 7.5-8"/>',
+            undo: '<path d="M7 5 4 8l3 3"/><path d="M4 8h8.2a4 4 0 0 1 0 8H9"/>',
+            i: '<path d="M10 5.4v.01M10 8.6V14"/>'
+        };
+        const icon = (n, s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ''}</svg>`;
+        document.querySelectorAll('[data-icon]').forEach(e => { e.innerHTML = icon(e.dataset.icon, e.dataset.size || 15); });
+
+        /* ================= state ================= */
+        const COLORS = { butter: '#FFE9A8', sage: '#DCEBC8', coral: '#FFD8C7', slate: '#DAE5E6' };
+        const LS_KEY = 'boardify:v1';
+        let seq = 0;
+        const nodes = new Map(), edges = new Map();
+        const cam = { x: 0, y: 0, z: 1 };
+        let selNode = null, selEdge = null, drag = null, pan = null, link = null;
+        const undoStack = [];
+
+        const board = $('#board'), world = $('#world'), wires = $('#wires'), notesWrap = $('#notes'),
+            ghost = $('#ghost'), emptyEl = $('#empty'), toasts = $('#toasts'), modalRoot = $('#modalRoot');
+
+        const worldX = cx => (cx - cam.x) / cam.z, worldY = cy => (cy - cam.y) / cam.z;
+        const detRot = id => { const k = parseInt(String(id).replace(/\D/g, ''), 10) || 1; return ((k * 47) % 9 - 4) * 0.5; };
+
+        function stripNode(n) {
+            return {
+                id: n.id, title: n.title, body: n.body, x: Math.round(n.x), y: Math.round(n.y),
+                width: n.w, color: n.color, author: n.author
+            };
+        }
+        function serialize() {
+            return JSON.stringify({
+                v: 1, seq, nodes: [...nodes.values()].map(stripNode),
+                links: [...edges.values()].map(e => ({ id: e.id, source: e.from, target: e.to, label: e.label || '' }))
+            });
+        }
+        function pushUndo(s) { undoStack.push(s); if (undoStack.length > 60) undoStack.shift(); }
+        function undo() {
+            if (!undoStack.length) { toast('Nothing left to undo', 'warn'); return; }
+            restore(JSON.parse(undoStack.pop())); toast('Undone', 'ok'); save();
+        }
+        let saveT = null;
+        function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LS_KEY, serialize()); } catch (e) { } }, 300); }
+        function mark() { emptyEl.style.display = nodes.size ? 'none' : 'grid'; save(); }
+
+        /* ================= camera ================= */
+        function applyCam() {
+            world.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${cam.z})`;
+            board.style.backgroundSize = `${26 * cam.z}px ${26 * cam.z}px`;
+            board.style.backgroundPosition = `${cam.x}px ${cam.y}px`;
+            $('#zLabel').textContent = Math.round(cam.z * 100) + '%';
+        }
+        function zoomAt(f, cx, cy) {
+            const nz = clamp(cam.z * f, .2, 2.5);
+            cam.x = cx - (cx - cam.x) * (nz / cam.z); cam.y = cy - (cy - cam.y) * (nz / cam.z); cam.z = nz; applyCam();
+        }
+        let camAnim = null;
+        function animateCamTo(t, dur) {
+            cancelAnimationFrame(camAnim);
+            if (!dur) { Object.assign(cam, t); applyCam(); return; }
+            const f = { ...cam }, t0 = performance.now();
+            const step = now => {
+                const k = clamp((now - t0) / dur, 0, 1), e = ease(k);
+                cam.x = f.x + (t.x - f.x) * e; cam.y = f.y + (t.y - f.y) * e; cam.z = f.z + (t.z - f.z) * e; applyCam();
+                if (k < 1) camAnim = requestAnimationFrame(step);
+            };
+            camAnim = requestAnimationFrame(step);
+        }
+        function bbox() {
+            let m = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+            nodes.forEach(n => {
+                m.minX = Math.min(m.minX, n.x); m.minY = Math.min(m.minY, n.y);
+                m.maxX = Math.max(m.maxX, n.x + n.w); m.maxY = Math.max(m.maxY, n.y + (n.h || 130));
+            });
+            return nodes.size ? m : null;
+        }
+        function fitView(animated = true) {
+            const bb = bbox();
+            if (!bb) { animateCamTo({ x: innerWidth / 2, y: innerHeight / 2, z: 1 }, animated ? 350 : 0); return; }
+            const bw = bb.maxX - bb.minX, bh = bb.maxY - bb.minY;
+            const z = clamp(Math.min((innerWidth - 320) / bw, (innerHeight - 360) / bh), .25, 1.15);
+            animateCamTo({ z, x: (innerWidth - bw * z) / 2 - bb.minX * z, y: (innerHeight - bh * z) / 2 - bb.minY * z }, animated ? 600 : 0);
+        }
+        function focusNode(id) {
+            const n = nodes.get(id); if (!n) return;
+            const cx = n.x + n.w / 2, cy = n.y + (n.h || 120) / 2, zt = clamp(cam.z, .85, 1.15);
+            animateCamTo({ z: zt, x: innerWidth / 2 - cx * zt, y: innerHeight / 2 - cy * zt }, 550);
+        }
+
+        /* ================= notes ================= */
+        function validColor(c) { return COLORS[c] ? c : null; }
+        function createNode(o) {
+            const id = o.id || ('n' + (++seq));
+            const n = {
+                id, title: String(o.title ?? 'Untitled'), body: String(o.body || ''),
+                x: o.x ?? 0, y: o.y ?? 0, w: o.w || 210, color: validColor(o.color) || (o.author === 'agent' ? 'slate' : 'butter'),
+                author: o.author || 'human', created: o.created || Date.now(), rot: o.rot ?? detRot(id)
+            };
+            nodes.set(id, n);
+            n.el = renderNode(n); n.h = n.el.offsetHeight;
+            mark(); drawAll(); return n;
+        }
+        function positionNote(n) { n.el.style.left = n.x + 'px'; n.el.style.top = n.y + 'px'; }
+        function renderNode(n) {
+            const d = el('div', 'note'); d.dataset.id = n.id;
+            d.style.left = n.x + 'px'; d.style.top = n.y + 'px'; d.style.width = n.w + 'px';
+            d.style.setProperty('--rot', n.rot + 'deg'); d.style.setProperty('--nc', COLORS[n.color]);
+            d.innerHTML = `<div class="tape"></div>
+    <span class="chip ${n.author === 'agent' ? 'agent' : 'you'}">${n.author === 'agent' ? icon('spark', 9) + 'AGENT' : 'YOU'}</span>
+    <h3 class="n-title">${esc(n.title)}</h3>
+    <div class="n-body">${esc(n.body)}</div>
+    <div class="port" title="Drag from here to link notes"></div>
+    <div class="note-tools">
+      ${Object.keys(COLORS).map(c => `<span class="dot${c === n.color ? ' on' : ''}" data-c="${c}" style="background:${COLORS[c]}" title="${c}"></span>`).join('')}
+      <span class="vdiv"></span>
+      <button class="nb" data-op="edit" title="Edit text">${icon('pen', 13)}</button>
+      <button class="nb danger" data-op="del" title="Delete note">${icon('trash', 13)}</button>
+    </div>`;
+            notesWrap.appendChild(d); wireNode(d, n); return d;
+        }
+        function selectNode(id) {
+            selEdge = null; if (selNode && nodes.get(selNode)) nodes.get(selNode).el.classList.remove('sel');
+            selNode = id; const n = nodes.get(id); if (n) n.el.classList.add('sel'); drawAll();
+        }
+        function selectEdge(id) {
+            if (selNode && nodes.get(selNode)) nodes.get(selNode).el.classList.remove('sel');
+            selNode = null; selEdge = id; drawAll();
+        }
+        function deselectAll() {
+            if (selNode && nodes.get(selNode)) nodes.get(selNode).el.classList.remove('sel');
+            selNode = null; selEdge = null; drawAll();
+        }
+        function removeNode(id) {
+            const n = nodes.get(id); if (!n) return [];
+            const rem = []; edges.forEach(e => { if (e.from === id || e.to === id) rem.push(e.id); }); rem.forEach(k => edges.delete(k));
+            if (selNode === id) selNode = null; n.el.remove(); nodes.delete(id); drawAll(); mark(); return rem;
+        }
+
+        function wireNode(d, n) {
+            d.addEventListener('pointerdown', e => {
+                if (e.button !== 0) return;
+                if (e.target.isContentEditable) return;
+                if (e.target.closest('.note-tools')) return;
+                if (e.target.classList.contains('port')) { startLink(e, n, d.querySelector('.port')); return; }
+                e.preventDefault(); selectNode(n.id);
+                drag = { n, sx: e.clientX, sy: e.clientY, ox: worldX(e.clientX) - n.x, oy: worldY(e.clientY) - n.y, moved: false, snap: serialize() };
+                d.setPointerCapture(e.pointerId);
+            });
+            d.addEventListener('pointermove', e => {
+                if (!drag || drag.n !== n) return;
+                if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+                drag.moved = true; n.x = worldX(e.clientX) - drag.ox; n.y = worldY(e.clientY) - drag.oy;
+                positionNote(n); drawAll();
+            });
+            const endDrag = e => {
+                if (!drag || drag.n !== n) return;
+                try { d.releasePointerCapture(e.pointerId); } catch (_) { }
+                if (drag.moved) { pushUndo(drag.snap); save(); } drag = null;
+            };
+            d.addEventListener('pointerup', endDrag); d.addEventListener('pointercancel', endDrag);
+            d.addEventListener('dblclick', e => {
+                e.stopPropagation();
+                const t = e.target.closest('.n-title,.n-body');
+                if (t) makeEditable(n, t.classList.contains('n-title') ? 'title' : 'body', t);
+            });
+            d.addEventListener('click', e => {
+                const dot = e.target.closest('.dot');
+                if (dot) { callTool('update_node', { node_id: n.id, color: dot.dataset.c }, 'ui'); return; }
+                const op = e.target.closest('.nb');
+                if (op) {
+                    if (op.dataset.op === 'del') callTool('delete_node', { node_id: n.id }, 'ui');
+                    else makeEditable(n, 'body', d.querySelector('.n-body'));
+                }
+            });
+        }
+        function makeEditable(n, field, tEl, opts = {}) {
+            if (opts.undo !== false) pushUndo(serialize());
+            try { tEl.contentEditable = 'plaintext-only'; } catch (_) { tEl.contentEditable = 'true'; }
+            if (tEl.contentEditable !== 'plaintext-only') tEl.contentEditable = 'true';
+            tEl.focus();
+            const r = document.createRange(); r.selectNodeContents(tEl);
+            const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+            const commit = () => {
+                tEl.removeAttribute('contenteditable');
+                let v = tEl.textContent.replace(/\u00a0/g, ' ').trim();
+                if (field === 'title' && !v) v = 'Untitled';
+                if (v !== n[field]) { n[field] = field === 'title' ? v.slice(0, 80) : v.slice(0, 800); save(); }
+                tEl.textContent = n[field]; n.h = n.el.offsetHeight; drawAll();
+            };
+            tEl.addEventListener('blur', commit, { once: true });
+            tEl.addEventListener('keydown', ev => {
+                ev.stopPropagation();
+                if (field === 'title' && ev.key === 'Enter') { ev.preventDefault(); tEl.blur(); }
+                if (ev.key === 'Escape') tEl.blur();
+            });
+        }
+
+        /* ================= edges ================= */
+        const DEFS = `<defs>
+  <marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#57503F"/></marker>
+  <marker id="arwa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#E24E1B"/></marker>
+</defs>`;
+        const anchor = (n, side) => side === 'out' ? { x: n.x + n.w, y: n.y + (n.h || 120) / 2 } : { x: n.x, y: n.y + (n.h || 120) / 2 };
+        function edgeGeom(e) {
+            const a = nodes.get(e.from), b = nodes.get(e.to);
+            const out = !(b.x + b.w * .5 < a.x + a.w * .5);
+            const p1 = anchor(a, out ? 'out' : 'in'), p2 = anchor(b, out ? 'in' : 'out');
+            const d = clamp(Math.abs(p2.x - p1.x) * .55, 45, 180) * (out ? 1 : -1);
+            return { p1, p2, c1: { x: p1.x + d, y: p1.y }, c2: { x: p2.x - d, y: p2.y } };
+        }
+        const cubicMid = g => ({ x: (g.p1.x + 3 * g.c1.x + 3 * g.c2.x + g.p2.x) / 8, y: (g.p1.y + 3 * g.c1.y + 3 * g.c2.y + g.p2.y) / 8 });
+        function drawAll() {
+            let s = DEFS;
+            edges.forEach(e => {
+                if (!nodes.has(e.from) || !nodes.has(e.to)) return;
+                const g = edgeGeom(e), m = cubicMid(g), sel = selEdge === e.id;
+                s += `<g class="edge${sel ? ' sel' : ''}" data-id="${e.id}">
+      <path class="ehit" d="M${g.p1.x} ${g.p1.y} C ${g.c1.x} ${g.c1.y}, ${g.c2.x} ${g.c2.y}, ${g.p2.x} ${g.p2.y}" stroke="transparent" stroke-width="14" fill="none"/>
+      <path class="eline" d="M${g.p1.x} ${g.p1.y} C ${g.c1.x} ${g.c1.y}, ${g.c2.x} ${g.c2.y}, ${g.p2.x} ${g.p2.y}" marker-end="url(#${sel ? 'arwa' : 'arw'})"/>
+      ${e.label ? `<text class="elabel" x="${m.x}" y="${m.y - 8}">${esc(e.label)}</text>` : ''}</g>`;
+            });
+            if (link && link.mx != null) {
+                const p = anchor(link.from, 'out');
+                s += `<path class="etemp" d="M${p.x} ${p.y} L${link.mx} ${link.my}"/>`;
+            }
+            wires.innerHTML = s;
+        }
+        function connectCore(aId, bId, label) {
+            const e = { id: 'e' + (++seq), from: aId, to: bId, label: label || '' };
+            edges.set(e.id, e); drawAll(); mark(); return e;
+        }
+        function startLink(e, n, port) {
+            e.preventDefault(); e.stopPropagation();
+            link = { from: n };
+            const onMove = ev => { link.mx = worldX(ev.clientX); link.my = worldY(ev.clientY); drawAll(); };
+            const onUp = ev => {
+                port.removeEventListener('pointermove', onMove);
+                port.removeEventListener('pointerup', onUp); port.removeEventListener('pointercancel', onUp);
+                const t = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.note');
+                if (t && t.dataset.id !== n.id && nodes.has(t.dataset.id)) {
+                    pushUndo(serialize()); connectCore(n.id, t.dataset.id);
+                    toast(`Linked “${trunc(n.title, 24)}” → “${trunc(nodes.get(t.dataset.id).title, 24)}”`, 'ok');
+                }
+                link = null; drawAll();
+            };
+            port.setPointerCapture(e.pointerId);
+            port.addEventListener('pointermove', onMove);
+            port.addEventListener('pointerup', onUp);
+            port.addEventListener('pointercancel', onUp);
+        }
+
+        /* ================= board interactions ================= */
+        board.addEventListener('pointerdown', e => {
+            if (e.target.closest('.note') || e.target.closest('g.edge')) return;
+            if (e.button !== 0 && e.button !== 1) return;
+            pan = { sx: e.clientX, sy: e.clientY, cx: cam.x, cy: cam.y, moved: false };
+            board.setPointerCapture(e.pointerId); board.classList.add('panning');
+        });
+        board.addEventListener('pointermove', e => {
+            if (!pan) return;
+            const dx = e.clientX - pan.sx, dy = e.clientY - pan.sy;
+            if (!pan.moved && Math.hypot(dx, dy) < 4) return;
+            pan.moved = true; cam.x = pan.cx + dx; cam.y = pan.cy + dy; applyCam();
+        });
+        const endPan = e => {
+            if (!pan) return; board.classList.remove('panning');
+            try { board.releasePointerCapture(e.pointerId); } catch (_) { }
+            if (!pan.moved) deselectAll(); pan = null;
+        };
+        board.addEventListener('pointerup', endPan); board.addEventListener('pointercancel', endPan);
+        board.addEventListener('dblclick', e => {
+            if (e.target.closest('.note') || e.target.closest('g.edge')) return;
+            pushUndo(serialize());
+            const n = createNode({ title: 'Untitled', body: '', x: worldX(e.clientX) - 105, y: worldY(e.clientY) - 46, author: 'human' });
+            n.el.classList.add('spawn'); selectNode(n.id);
+            makeEditable(n, 'title', n.el.querySelector('.n-title'), { undo: false });
+        });
+        board.addEventListener('wheel', e => {
+            e.preventDefault();
+            zoomAt(Math.exp(-e.deltaY * 0.00125), e.clientX, e.clientY);
+        }, { passive: false });
+
+        wires.addEventListener('pointerdown', e => {
+            const g = e.target.closest('g.edge');
+            if (g) { selectEdge(g.dataset.id); e.stopPropagation(); }
+        });
+        wires.addEventListener('dblclick', e => {
+            const g = e.target.closest('g.edge'); if (!g) return;
+            e.stopPropagation(); const edge = edges.get(g.dataset.id); if (!edge) return;
+            const gm = edgeGeom(edge), m = cubicMid(gm);
+            const ee = $('#edgeEdit'), inp = $('#edgeEditIn');
+            ee.style.display = 'block';
+            ee.style.left = (m.x * cam.z + cam.x) + 'px'; ee.style.top = (m.y * cam.z + cam.y - 14) + 'px';
+            inp.value = edge.label || ''; inp.focus(); inp.select();
+            const done = save2 => {
+                ee.style.display = 'none'; inp.onblur = null; inp.onkeydown = null;
+                if (save2) { pushUndo(serialize()); edge.label = inp.value.trim().slice(0, 40); drawAll(); save(); }
+            };
+            inp.onblur = () => done(true);
+            inp.onkeydown = ev => {
+                ev.stopPropagation();
+                if (ev.key === 'Enter') done(true); if (ev.key === 'Escape') done(false);
+            };
+        });
+
+        window.addEventListener('keydown', e => {
+            const a = document.activeElement;
+            if (a && (a.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(a.tagName))) {
+                if (e.key === 'Escape') a.blur(); return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selNode) callTool('delete_node', { node_id: selNode }, 'ui');
+                else if (selEdge) { pushUndo(serialize()); edges.delete(selEdge); selEdge = null; drawAll(); save(); }
+                return;
+            }
+            if (e.key === 'Escape') { if (modalRoot.classList.contains('open')) closeModal(); else deselectAll(); }
+        });
+
+        /* ================= toasts / modals / ghost / log ================= */
+        function toast(msg, type = 'info', ms = 3400) {
+            const t = el('div', 'toast ' + type,
+                `<span class="tic">${icon(type === 'ok' ? 'check' : type === 'warn' ? 'x' : 'i', 13)}</span><span>${esc(msg)}</span>`);
+            toasts.appendChild(t); requestAnimationFrame(() => t.classList.add('in'));
+            setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 260); }, ms);
+        }
+        function openModal(html) {
+            modalRoot.innerHTML = `<div class="mbk"></div><div class="mcard panel">${html}</div>`;
+            modalRoot.classList.add('open');
+            modalRoot.querySelector('.mbk').onclick = closeModal;
+            modalRoot.querySelector('.m-close').onclick = closeModal;
+        }
+        function closeModal() { modalRoot.classList.remove('open'); modalRoot.innerHTML = ''; }
+        let ghostT;
+        function agentAt(x, y) {
+            ghost.style.left = x + 'px'; ghost.style.top = y + 'px';
+            ghost.classList.add('on'); ghost.classList.remove('ping'); void ghost.offsetWidth;
+            ghost.classList.add('ping'); clearTimeout(ghostT);
+            ghostT = setTimeout(() => ghost.classList.remove('on'), 2400);
+        }
+        function flagNote(n, text) {
+            const f = el('div', 'flag', esc(text)); n.el.appendChild(f);
+            setTimeout(() => f.remove(), 3600);
+        }
+
+        const logLines = $('#logLines'); let logN = 0;
+        function addLogLine(name, args, src) {
+            logN++; $('#logCount').textContent = logN;
+            const a = trunc(JSON.stringify(args ?? {}), 72);
+            const line = el('div', 'll',
+                `<span class="lt">${nowT()}</span><span class="lsrc ${src}">${src === 'webmcp' ? 'mcp' : src}</span>` +
+                `<b class="ln">${esc(name)}</b><span class="la">${esc(a)}</span><span class="lr"></span>`);
+            logLines.appendChild(line);
+            while (logLines.children.length > 250) logLines.firstChild.remove();
+            logLines.scrollTop = logLines.scrollHeight;
+            return line.querySelector('.lr');
+        }
+        function summarize(r) {
+            if (r.node_id) return 'note ' + r.node_id;
+            if (r.link_id) return 'link created';
+            if (r.moved != null) return r.moved + ' notes moved';
+            if (r.format) return r.format + ' · ' + r.content.length + ' chars';
+            if (r.note_count != null) return r.note_count + ' notes, ' + r.link_count + ' links';
+            return 'ok';
+        }
+        function finLog(span, r) {
+            const ok = r && r.success !== false;
+            span.innerHTML = ok
+                ? `<i style="display:inline-flex;vertical-align:-1px">${icon('check', 10)}</i> ${esc(trunc(summarize(r), 46))}`
+                : `<i class="errc" style="display:inline-flex;vertical-align:-1px">${icon('x', 10)}</i> ${esc(trunc(r && r.error || 'failed', 44))}`;
+            logLines.scrollTop = logLines.scrollHeight;
+        }
+        $('#logClear').onclick = () => { logLines.innerHTML = ''; };
+
+        /* ================= layout algorithms ================= */
+        let tpAnim = null;
+        function tweenPositions(targets, dur = 540) {
+            cancelAnimationFrame(tpAnim);
+            const start = new Map(); targets.forEach((t, id) => { const n = nodes.get(id); if (n) start.set(id, { x: n.x, y: n.y }); });
+            const t0 = performance.now();
+            const frame = t => {
+                const k = clamp((t - t0) / dur, 0, 1), e = ease(k);
+                start.forEach((s, id) => {
+                    const n = nodes.get(id), g = targets.get(id);
+                    n.x = s.x + (g.x - s.x) * e; n.y = s.y + (g.y - s.y) * e; positionNote(n);
+                });
+                drawAll();
+                if (k < 1) tpAnim = requestAnimationFrame(frame); else save();
+            };
+            tpAnim = requestAnimationFrame(frame);
+        }
+        function components() {
+            const parent = new Map();
+            nodes.forEach((_, id) => parent.set(id, id));
+            const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+            edges.forEach(e => { if (parent.has(e.from) && parent.has(e.to)) parent.set(find(e.from), find(e.to)); });
+            const comps = new Map();
+            nodes.forEach((n, id) => { const r = find(id); if (!comps.has(r)) comps.set(r, []); comps.get(r).push(n); });
+            return [...comps.values()].map(c => c.sort((a, b) => a.created - b.created)).sort((a, b) => b.length - a.length);
+        }
+        function freeSpot(x, y) {
+            const sy = y;
+            for (let i = 0; i < 400; i++) {
+                let clash = false;
+                for (const n of nodes.values()) {
+                    if (Math.abs(n.x - x) < n.w + 26 && Math.abs(n.y - y) < (n.h || 130) + 26) { clash = true; break; }
+                }
+                if (!clash) return { x, y };
+                y += 52; if (y > sy + 660) { y = sy; x += 250; }
+            }
+            return { x, y };
+        }
+        function centroid() {
+            if (!nodes.size) return { x: 0, y: 0 };
+            let sx = 0, sy = 0; nodes.forEach(n => { sx += n.x; sy += n.y; });
+            return { x: sx / nodes.size, y: sy / nodes.size };
+        }
+        function clusterTargets() {
+            const t = new Map(), bb = bbox();
+            let x = bb ? bb.minX : 0; const y0 = bb ? bb.minY : 0;
+            components().forEach(comp => {
+                let y = y0;
+                comp.forEach(n => { t.set(n.id, { x, y }); y += (n.h || 130) + 36; }); x += 300;
+            });
+            return t;
+        }
+        function timelineTargets() {
+            const t = new Map(), bb = bbox();
+            let x = bb ? bb.minX : 0; const y = bb ? bb.minY : 0;
+            [...nodes.values()].sort((a, b) => a.created - b.created).forEach(n => { t.set(n.id, { x, y }); x += 300; });
+            return t;
+        }
+        function mdOutline() {
+            const lines = ['# Boardify export', ''];
+            const comps = components();
+            comps.forEach((c, i) => {
+                if (comps.length > 1) lines.push(`## Cluster ${i + 1}`, '');
+                c.forEach(n => lines.push(`- **${n.title}**${n.body ? ' — ' + n.body.replace(/\n/g, ' / ') : ''}`));
+            });
+            if (edges.size) {
+                lines.push('', '### Links');
+                edges.forEach(e => {
+                    const a = nodes.get(e.from), b = nodes.get(e.to); if (a && b)
+                        lines.push(`- ${a.title} → ${b.title}${e.label ? ` (${e.label})` : ''}`);
+                });
+            }
+            return lines.join('\n');
+        }
+
+        /* ================= the WebMCP tool layer ================= */
+        const TOOLS = {};
+        function defTool(name, description, inputSchema, run) { TOOLS[name] = { name, description, inputSchema, run }; }
+
+        defTool('get_canvas_state',
+            "Read the full board: every note (id, title, body, position, author) and every link. Call this first to understand the canvas before acting.",
+            { type: 'object', properties: {} },
+            () => ({
+                success: true, note_count: nodes.size, link_count: edges.size,
+                notes: [...nodes.values()].map(stripNode),
+                links: [...edges.values()].map(e => ({ id: e.id, source: e.from, target: e.to, label: e.label || '' }))
+            }));
+
+        defTool('add_idea_node',
+            "Create a new sticky note on the board. Positions are in canvas units; roughly 300 units between notes keeps the board readable. If x/y are omitted, a free spot is chosen automatically.",
+            {
+                type: 'object', properties: {
+                    title: { type: 'string', description: 'Short headline for the note (~40 chars reads best)' },
+                    body: { type: 'string', description: 'Supporting detail shown under the title; newlines allowed' },
+                    x: { type: 'number', description: 'Canvas X position' },
+                    y: { type: 'number', description: 'Canvas Y position' },
+                    color: { type: 'string', enum: ['butter', 'sage', 'coral', 'slate'], description: 'Note color' }
+                },
+                required: ['title']
+            },
+            i => {
+                const title = String(i.title || '').trim();
+                if (!title) return { success: false, error: 'title is required' };
+                let x = Number.isFinite(+i.x) ? +i.x : null, y = Number.isFinite(+i.y) ? +i.y : null;
+                if (x == null || y == null) { const c = centroid(); x = x ?? c.x + 260; y = y ?? c.y; }
+                const p = freeSpot(x, y); x = p.x; y = p.y;
+                const color = validColor(i.color) || ['slate', 'butter', 'coral', 'sage'][seq % 4];
+                pushUndo(serialize());
+                const n = createNode({
+                    title: title.slice(0, 80), body: String(i.body || '').slice(0, 800),
+                    x: Math.round(x), y: Math.round(y), color, author: 'agent'
+                });
+                n.el.classList.add('spawn'); setTimeout(() => n.el.classList.remove('spawn'), 500);
+                agentAt(n.x + n.w / 2, n.y + (n.h || 100) / 2);
+                return { success: true, node_id: n.id, x: Math.round(n.x), y: Math.round(n.y) };
+            });
+
+        defTool('update_node',
+            "Edit an existing note's title, body, color or position.",
+            {
+                type: 'object', properties: {
+                    node_id: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' },
+                    color: { type: 'string', enum: ['butter', 'sage', 'coral', 'slate'] },
+                    x: { type: 'number' }, y: { type: 'number' }
+                }, required: ['node_id']
+            },
+            i => {
+                const n = nodes.get(i.node_id);
+                if (!n) return { success: false, error: 'node not found: ' + i.node_id };
+                const t = i.title != null ? String(i.title).trim() : null;
+                const b = i.body != null ? String(i.body) : null;
+                const c = validColor(i.color);
+                const xy = Number.isFinite(+i.x) && Number.isFinite(+i.y);
+                if (!t && b == null && !c && !xy) return { success: false, error: 'nothing to update' };
+                pushUndo(serialize());
+                if (t) n.title = t.slice(0, 80) || n.title;
+                if (b != null) n.body = b.slice(0, 800);
+                if (c) n.color = c;
+                n.el.querySelector('.n-title').textContent = n.title;
+                n.el.querySelector('.n-body').textContent = n.body;
+                n.el.style.setProperty('--nc', COLORS[n.color]);
+                n.el.querySelectorAll('.dot').forEach(d => d.classList.toggle('on', d.dataset.c === n.color));
+                n.h = n.el.offsetHeight;
+                if (xy) tweenPositions(new Map([[n.id, { x: +i.x, y: +i.y }]])); else drawAll();
+                agentAt(n.x + n.w / 2, n.y + (n.h || 100) / 2); save();
+                return { success: true, node_id: n.id };
+            });
+
+        defTool('delete_node',
+            "Remove a note and any links attached to it.",
+            { type: 'object', properties: { node_id: { type: 'string' } }, required: ['node_id'] },
+            i => {
+                if (!nodes.has(i.node_id)) return { success: false, error: 'node not found: ' + i.node_id };
+                pushUndo(serialize()); const rem = removeNode(i.node_id);
+                return { success: true, node_id: i.node_id, removed_links: rem };
+            });
+
+        defTool('connect_nodes',
+            "Draw a link from one note to another, with an optional relationship label.",
+            {
+                type: 'object', properties: {
+                    source_id: { type: 'string' }, target_id: { type: 'string' },
+                    label: { type: 'string', description: 'Short relationship label shown on the link' }
+                },
+                required: ['source_id', 'target_id']
+            },
+            i => {
+                const a = nodes.get(i.source_id), b = nodes.get(i.target_id);
+                if (!a || !b) return { success: false, error: 'unknown node id' };
+                if (a === b) return { success: false, error: 'cannot link a note to itself' };
+                for (const e of edges.values())
+                    if (e.from === a.id && e.to === b.id) return { success: false, error: 'link already exists', link_id: e.id };
+                pushUndo(serialize());
+                const e = connectCore(a.id, b.id, String(i.label || '').slice(0, 40));
+                agentAt((a.x + a.w + b.x) / 2, (a.y + b.y) / 2);
+                return { success: true, link_id: e.id };
+            });
+
+        defTool('arrange_layout',
+            "Reposition every note into a clean layout: 'clusters' groups connected ideas into columns; 'timeline' orders all notes left-to-right by creation time.",
+            { type: 'object', properties: { layout: { type: 'string', enum: ['clusters', 'timeline'] } } },
+            i => {
+                if (!nodes.size) return { success: false, error: 'board is empty' };
+                const layout = i.layout === 'timeline' ? 'timeline' : 'clusters';
+                pushUndo(serialize());
+                const t = layout === 'timeline' ? timelineTargets() : clusterTargets();
+                tweenPositions(t, 560); setTimeout(() => fitView(true), 640);
+                return { success: true, layout, moved: t.size };
+            });
+
+        defTool('highlight_node',
+            "Point at a note: the camera moves to it and it pulses. Use this to show the human something specific, with a short reason displayed on the board.",
+            {
+                type: 'object', properties: {
+                    node_id: { type: 'string' }, reason: { type: 'string', description: 'Short human-readable why, shown as a flag on the board' }
+                },
+                required: ['node_id']
+            },
+            i => {
+                const n = nodes.get(i.node_id);
+                if (!n) return { success: false, error: 'node not found: ' + i.node_id };
+                agentAt(n.x + n.w / 2, n.y + (n.h || 100) / 2); focusNode(n.id);
+                n.el.classList.remove('hl'); void n.el.offsetWidth; n.el.classList.add('hl');
+                setTimeout(() => n.el.classList.remove('hl'), 3000);
+                const reason = String(i.reason || '').slice(0, 90);
+                if (reason) flagNote(n, reason);
+                return { success: true, node_id: n.id };
+            });
+
+        defTool('export_canvas',
+            "Export the board as a JSON state dump or a markdown outline (connected clusters with their links).",
+            { type: 'object', properties: { format: { type: 'string', enum: ['json', 'markdown'] } } },
+            i => {
+                const fmt = /^json$/i.test(i.format || '') ? 'json' : 'markdown';
+                const content = fmt === 'json'
+                    ? JSON.stringify({
+                        notes: [...nodes.values()].map(stripNode),
+                        links: [...edges.values()].map(e => ({ source: e.from, target: e.to, label: e.label || '' }))
+                    }, null, 2)
+                    : mdOutline();
+                return { success: true, format: fmt, note_count: nodes.size, link_count: edges.size, content };
+            });
+
+        defTool('clear_canvas',
+            "Delete every note and link. Destructive — pass confirm:true or the call is refused.",
+            { type: 'object', properties: { confirm: { type: 'boolean', description: 'Must be exactly true; a safety interlock against accidental wipes' } } },
+            i => {
+                if (i.confirm !== true) return { success: false, error: 'refused: pass confirm:true to wipe the board' };
+                pushUndo(serialize());
+                nodes.forEach(n => n.el && n.el.remove()); nodes.clear(); edges.clear();
+                selNode = selEdge = null; drawAll(); mark();
+                return { success: true };
+            });
+
+        function callTool(name, input, src = 'demo') {
+            const t = TOOLS[name];
+            if (!t) { toast('Unknown tool: ' + name, 'warn'); return { success: false, error: 'unknown tool' }; }
+            const span = addLogLine(name, input, src); let r;
+            try { r = t.run(input || {}); } catch (err) { r = { success: false, error: String(err && err.message || err) }; }
+            finLog(span, r); return r;
+        }
+
+        /* WebMCP registration */
+        let mcpOn = false, mcpTries = 0;
+        function updateMcpPill(on) {
+            const p = $('#mcpPill'); p.classList.toggle('live', on);
+            $('#mcpText').textContent = on
+                ? `WebMCP live · ${Object.keys(TOOLS).length} tools`
+                : 'Demo mode · WebMCP not detected';
+            p.title = on
+                ? 'document.modelContext detected — Boardify tools are registered and live.'
+                : 'No document.modelContext found yet. The local demo agent exercises the exact same tool layer.';
+        }
+        function tryRegisterMCP() {
+            if (mcpOn) return true;
+            const mc = document.modelContext;
+            if (mc && typeof mc.registerTool === 'function') {
+                try {
+                    Object.values(TOOLS).forEach(t => mc.registerTool({
+                        name: t.name, description: t.description, inputSchema: t.inputSchema,
+                        execute: async input => {
+                            const span = addLogLine(t.name, input, 'webmcp'); let r;
+                            try { r = t.run(input || {}); } catch (err) { r = { success: false, error: String(err && err.message || err) }; }
+                            finLog(span, r); return r;
+                        }
+                    }));
+                    mcpOn = true; updateMcpPill(true);
+                    toast(`WebMCP connected — ${Object.keys(TOOLS).length} tools registered`, 'ok');
+                    return true;
+                } catch (e) { return false; }
+            }
+            return false;
+        }
+        updateMcpPill(false);
+        const mcpPoll = setInterval(() => {
+            mcpTries++;
+            if (tryRegisterMCP() || mcpTries > 20) { clearInterval(mcpPoll); if (mcpTries > 20) updateMcpPill(false); }
+        }, 1500);
+
+        /* machine-readable guide for agents that read the page */
+        $('#agent-guide').textContent = JSON.stringify({
+            app: 'Boardify', protocol: 'WebMCP (document.modelContext)',
+            summary: 'A shared spatial whiteboard. 9 tools are registered on document.modelContext when available.',
+            suggested_prompts: [
+                'Read my board, then add three marketing strategies to the right of the main idea and connect them.',
+                'Critique the board: highlight anything unconnected and leave an agent review note.',
+                'Arrange the board into clusters, then export it as markdown.'],
+            tools: Object.values(TOOLS).map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
+        });
+        window.BOARDIFY = { nodes, edges, tools: TOOLS, callTool };
+
+        /* ================= local demo agent (same tool layer) ================= */
+        const BANKS = {
+            marketing: {
+                edge: 'strategy', items: [
+                    { t: 'Content engine', b: 'Ship one useful artifact a week — teardowns, templates, changelogs — and let search do the compounding.' },
+                    { t: 'Community flywheel', b: 'A tiny core of power users who answer each other beats any ad spend at this stage.' },
+                    { t: 'Partnerships', b: 'Co-host something with an adjacent product; share audiences, split the work.' },
+                    { t: 'Paid experiments', b: 'Small, brutal, falsifiable ad tests. Kill anything above target CAC in two weeks.' }]
+            },
+            product: {
+                edge: 'build on', items: [
+                    { t: 'Core loop', b: 'Name the one action that makes it sticky. Optimize ruthlessly for that.' },
+                    { t: 'Onboarding', b: 'From signup to first win in under five minutes, or the wow moment is lost.' },
+                    { t: 'Pricing', b: 'Charge early — price is the fastest feedback loop you have.' },
+                    { t: 'Tech debt radar', b: 'Decide now what is allowed to rot, and what is load-bearing forever.' }]
+            },
+            story: {
+                edge: 'beat', items: [
+                    { t: 'Opening image', b: 'The first frame is a promise. Decide what it swears to.' },
+                    { t: 'Characters', b: 'Everyone wants something — even the one who claims not to.' },
+                    { t: 'Conflict', b: 'Two goods in tension beat good versus evil, every time.' },
+                    { t: 'Resolution', b: 'End the beat one scene earlier than feels safe.' }]
+            },
+            default: {
+                edge: 'facet', items: [
+                    { t: 'Why it matters', b: 'If this disappeared tomorrow, who would honestly notice — and why?' },
+                    { t: 'Who it serves', b: 'Picture one real person, not a persona. What were they doing five minutes before?' },
+                    { t: 'First steps', b: 'The smallest thing that could be true by Friday.' },
+                    { t: 'Risks & unknowns', b: 'What would have to be true for this to fail quietly?' }]
+            }
+        };
+        const PROS = [
+            { t: 'It compounds', b: 'The assets you build keep paying rent after the work stops.' },
+            { t: 'Fast to test', b: 'A focused first version can be in real hands this week.' },
+            { t: 'Reversible', b: 'Almost none of this is a one-way door. Bias toward motion.' }];
+        const CONS = [
+            { t: 'Attention split', b: 'Spreading across fronts usually means winning none of them.' },
+            { t: 'Cold start', b: 'Momentum is easy to draw and hard to start.' },
+            { t: 'Scope creep', b: 'The next shiny idea always looks cheaper than the last one.' }];
+
+        function anchorNode() {
+            const s = selNode && nodes.get(selNode);
+            if (s) return s;
+            const first = [...nodes.values()].sort((a, b) => a.created - b.created)[0];
+            if (!first) { toast('Add a note first — the agent needs something to work with', 'warn'); return null; }
+            toast(`No note selected — anchoring on “${trunc(first.title, 24)}”`, 'info', 2200);
+            return first;
+        }
+        function pickBank(n) {
+            const txt = (n.title + ' ' + n.body).toLowerCase();
+            if (/launch|market|growth|saas|startup|customer|sell|brand|campaign/.test(txt)) return BANKS.marketing;
+            if (/build|product|feature|app|design|engineer|mvp|stack|ship/.test(txt)) return BANKS.product;
+            if (/story|video|script|film|scene|novel|comic|narrative/.test(txt)) return BANKS.story;
+            return BANKS.default;
+        }
+
+        async function mExpand() {
+            const a = anchorNode(); if (!a) return;
+            toast(`Agent is expanding “${trunc(a.title, 26)}”…`, 'info');
+            const bank = pickBank(a); let made = 0;
+            for (let i = 0; i < bank.items.length; i++) {
+                const it = bank.items[i]; await sleep(560);
+                const r = callTool('add_idea_node', {
+                    title: it.t, body: it.b, x: a.x + a.w + 130,
+                    y: a.y + (i - (bank.items.length - 1) / 2) * 158, color: ['slate', 'butter', 'coral', 'sage'][i % 4]
+                });
+                if (r.success) {
+                    made++; await sleep(200);
+                    callTool('connect_nodes', { source_id: a.id, target_id: r.node_id, label: bank.edge });
+                }
+            }
+            if (made) { toast(`Added ${made} branches to “${trunc(a.title, 26)}”`, 'ok'); setTimeout(() => fitView(true), 650); }
+        }
+
+        async function mPros() {
+            const a = anchorNode(); if (!a) return;
+            toast(`Agent: weighing “${trunc(a.title, 24)}”…`, 'info');
+            const X = a.x + a.w + 140;
+            for (let i = 0; i < 3; i++) {
+                await sleep(480);
+                const r = callTool('add_idea_node', { title: PROS[i].t, body: PROS[i].b, x: X, y: a.y - 260 + i * 152, color: 'sage' });
+                if (r.success) { await sleep(180); callTool('connect_nodes', { source_id: a.id, target_id: r.node_id, label: 'pro' }); }
+            }
+            for (let i = 0; i < 3; i++) {
+                await sleep(480);
+                const r = callTool('add_idea_node', { title: CONS[i].t, body: CONS[i].b, x: X, y: a.y + 210 + i * 152, color: 'coral' });
+                if (r.success) { await sleep(180); callTool('connect_nodes', { source_id: a.id, target_id: r.node_id, label: 'con' }); }
+            }
+            toast(`Pros & cons mapped for “${trunc(a.title, 24)}”`, 'ok'); setTimeout(() => fitView(true), 650);
+        }
+
+        async function mCritique() {
+            if (!nodes.size) { toast('The board is empty — nothing to critique', 'warn'); return; }
+            const st = callTool('get_canvas_state', {});
+            const linked = new Set(); st.links.forEach(l => { linked.add(l.source); linked.add(l.target); });
+            const orphans = st.notes.filter(n => !linked.has(n.id));
+            const deg = {}; st.links.forEach(l => { deg[l.source] = (deg[l.source] || 0) + 1; deg[l.target] = (deg[l.target] || 0) + 1; });
+            let hub = null, hd = 0; for (const [id, d] of Object.entries(deg)) if (d > hd) { hd = d; hub = id; }
+            const humanN = st.notes.filter(n => n.author === 'human').length, agentN = st.note_count - humanN;
+            const obs = [`${st.note_count} notes (${humanN} yours, ${agentN} agent) · ${st.link_count} links`];
+            if (st.link_count === 0) obs.push('No links yet — a pile of notes is not an argument.');
+            if (orphans.length) obs.push(`${orphans.length} unconnected note${orphans.length > 1 ? 's' : ''} — ideas without links die quietly.`);
+            if (hub && hd >= 3) obs.push(`“${trunc(nodes.get(hub).title, 24)}” carries the board (${hd} links) — consider splitting it.`);
+            if (agentN === 0) obs.push('The agent has contributed nothing yet — feed it a mission.');
+            obs.push('Verdict: ' + (st.link_count >= st.note_count * 0.7 ? 'well-woven — keep going.' : 'link things up; the structure is the product.'));
+            await sleep(300);
+            const bb = bbox();
+            callTool('add_idea_node', {
+                title: 'Agent review', body: obs.map(o => '• ' + o).join('\n'),
+                x: bb.minX, y: bb.maxY + 130, color: 'slate'
+            });
+            if (orphans.length) {
+                await sleep(500);
+                callTool('highlight_node', { node_id: orphans[0].id, reason: 'Unconnected — link it or lose it' });
+            }
+            toast('Agent left a review on the board', 'ok');
+        }
+
+        function mTidy() {
+            if (!nodes.size) { toast('Nothing to tidy — the board is empty', 'warn'); return; }
+            callTool('arrange_layout', { layout: 'clusters' });
+        }
+        function mTimeline() {
+            if (!nodes.size) { toast('Nothing to arrange — the board is empty', 'warn'); return; }
+            callTool('arrange_layout', { layout: 'timeline' });
+        }
+
+        const MISSIONS = [
+            { label: 'Expand an idea', hint: 'four branches off the selected note', run: mExpand },
+            { label: 'Pros & cons', hint: 'weigh the selected note, pro/con links', run: mPros },
+            { label: 'Critique the board', hint: 'review note + highlights weak spots', run: mCritique },
+            { label: 'Tidy into clusters', hint: 'group connected notes into columns', run: mTidy },
+            { label: 'Lay out a timeline', hint: 'order everything by creation', run: mTimeline }];
+        let missionBusy = false;
+        MISSIONS.forEach(m => {
+            const b = el('button', 'mission',
+                `<span class="m-ic">${icon('spark', 14)}</span><span class="m-tx"><b>${m.label}</b><small>${m.hint}</small></span>`);
+            b.onclick = async () => {
+                if (missionBusy) return; missionBusy = true;
+                MISSIONS.forEach(x => x.btn && x.btn.setAttribute('disabled', ''));
+                try { await m.run(); } finally {
+                    missionBusy = false;
+                    MISSIONS.forEach(x => x.btn && x.btn.removeAttribute('disabled'));
+                }
+            };
+            m.btn = b; $('#missions').appendChild(b);
+        });
+
+        function findByTitle(q) {
+            q = q.trim().toLowerCase(); let best = null, bs = 0;
+            nodes.forEach(n => {
+                const t = n.title.toLowerCase(); let s = 0;
+                if (t === q) s = 3; else if (t.includes(q) || q.includes(t)) s = 2;
+                if (s > bs) { bs = s; best = n; }
+            });
+            return bs ? best : null;
+        }
+        const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+        async function runFree() {
+            const raw = $('#freeIn').value.trim(); if (!raw) return;
+            $('#freeIn').value = ''; const q = raw.toLowerCase();
+            let m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:note|idea|node|sticky)?\s*(.+)/);
+            if (m) {
+                let t = m[1], body = '';
+                const sp = t.split(/\s*[|;]\s*/);
+                if (sp.length > 1) { t = sp[0]; body = sp.slice(1).join(' — '); }
+                const r = callTool('add_idea_node', { title: cap(t), body });
+                if (r.success) toast(`Note “${cap(t)}” is on the board`, 'ok'); return;
+            }
+            m = q.match(/^connect\s+(.+?)\s+(?:to|and|with)\s+(.+)$/);
+            if (m) {
+                const a = findByTitle(m[1]), b = findByTitle(m[2]);
+                if (a && b) {
+                    const r = callTool('connect_nodes', { source_id: a.id, target_id: b.id });
+                    if (r.success) toast(`Linked “${trunc(a.title, 20)}” → “${trunc(b.title, 20)}”`, 'ok');
+                }
+                else toast(`Couldn't find “${a ? m[2] : m[1]}” on the board`, 'warn'); return;
+            }
+            if (/tidy|organi|cluster|group|arrange|clean/.test(q)) return mTidy();
+            if (/timeline|sequence|chronolog|order/.test(q)) return mTimeline();
+            if (/\bpro\b|cons|tradeoff|for and against/.test(q)) return mPros();
+            if (/critique|review|feedback|roast|audit/.test(q)) return mCritique();
+            if (/expand|branch|flesh|brainstorm|strateg|idea|riff|elaborate/.test(q)) return mExpand();
+            if (/highlight|point at|look at|attention/.test(q)) {
+                const n = (selNode && nodes.get(selNode)) || [...nodes.values()][0];
+                if (n) callTool('highlight_node', { node_id: n.id, reason: trunc(raw, 60) });
+                else toast('Nothing to highlight yet', 'warn'); return;
+            }
+            if (/clear|reset|wipe/.test(q)) { callTool('clear_canvas', { confirm: true }); return; }
+            if (/export|markdown|download/.test(q)) {
+                const r = callTool('export_canvas', { format: /json/.test(q) ? 'json' : 'markdown' });
+                if (r.success) {
+                    download(r.format === 'json' ? 'boardify.json' : 'boardify.md', r.content,
+                        r.format === 'json' ? 'application/json' : 'text/markdown'); toast('Export downloaded', 'ok');
+                } return;
+            }
+            if (/what|state|summar|read|see|board/.test(q)) {
+                const st = callTool('get_canvas_state', {});
+                toast(`Board: ${st.note_count} notes, ${st.link_count} links — full JSON is in the tool log`, 'info', 4200); return;
+            }
+            toast('Try: “expand the selected note” · “pros and cons” · “connect welcome to agents” · “tidy” · “what do you see?”', 'info', 5200);
+        }
+        $('#freeRun').onclick = runFree;
+        $('#freeIn').addEventListener('keydown', e => { if (e.key === 'Enter') runFree(); });
+
+        /* ================= toolbar / panels ================= */
+        $('#toolCount').textContent = Object.keys(TOOLS).length + ' registered';
+        $('#toolList').innerHTML = Object.values(TOOLS).map(t =>
+            `<li><code>${t.name}</code><span>${esc(t.description.split('.')[0])}.</span></li>`).join('');
+        document.querySelectorAll('.p-collapse').forEach(b =>
+            b.onclick = () => b.closest('.panel').classList.toggle('closed'));
+
+        $('#btnAdd').onclick = () => {
+            pushUndo(serialize());
+            const c = centroid(), p = freeSpot(c.x - 105, c.y - 50);
+            const n = createNode({ title: 'Untitled', x: p.x, y: p.y, author: 'human' });
+            n.el.classList.add('spawn'); selectNode(n.id);
+            makeEditable(n, 'title', n.el.querySelector('.n-title'), { undo: false });
+        };
+        document.querySelectorAll('#actions [data-act]').forEach(b => {
+            b.onclick = () => {
+                const act = b.dataset.act;
+                if (act === 'tidy') mTidy();
+                else if (act === 'fit') fitView(true);
+                else if (act === 'undo') undo();
+                else if (act === 'export') exportModal();
+                else if (act === 'clear') confirmModal();
+                else if (act === 'help') helpModal();
+            };
+        });
+        $('#zIn').onclick = () => zoomAt(1.25, innerWidth / 2, innerHeight / 2);
+        $('#zOut').onclick = () => zoomAt(.8, innerWidth / 2, innerHeight / 2);
+        $('#zFit').onclick = () => fitView(true);
+
+        function download(name, text, mime) {
+            const a = el('a');
+            a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+            a.download = name; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        }
+        function exportModal() {
+            openModal(`
+  <button class="m-close">${icon('x', 15)}</button>
+  <div class="m-title">Export the board</div>
+  <p style="font-size:12.5px;color:var(--ink-soft)">Both formats come from the same <code style="color:var(--acc)">export_canvas</code> tool an agent can call.</p>
+  <div class="mbtns" style="justify-content:flex-start">
+    <button class="mbtn acc" id="exMd">Markdown outline</button>
+    <button class="mbtn" id="exJs">JSON state</button>
+  </div>`);
+            const go = f => {
+                const r = callTool('export_canvas', { format: f }, 'ui');
+                if (r.success) {
+                    download(f === 'json' ? 'boardify.json' : 'boardify.md', r.content,
+                        f === 'json' ? 'application/json' : 'text/markdown'); toast('Export downloaded', 'ok');
+                }
+                closeModal();
+            };
+            $('#exMd').onclick = () => go('markdown'); $('#exJs').onclick = () => go('json');
+        }
+        function confirmModal() {
+            openModal(`
+  <button class="m-close">${icon('x', 15)}</button>
+  <div class="m-title">Wipe the board?</div>
+  <p style="font-size:13px;margin-top:8px;line-height:1.5">Every note and link goes. You can Ctrl+Z your way back, but still — dramatic.</p>
+  <div class="mbtns"><button class="mbtn" id="cNo">Cancel</button>
+  <button class="mbtn acc" id="cYes">Wipe it</button></div>`);
+            $('#cNo').onclick = closeModal;
+            $('#cYes').onclick = () => { closeModal(); callTool('clear_canvas', { confirm: true }, 'ui'); };
+        }
+        function helpModal() {
+            const shortcuts = [['Double-click canvas', 'new note'], ['Drag from a note’s right port', 'link notes'],
+            ['Double-click a link', 'rename it'], ['Double-click note text', 'edit'],
+            ['<kbd>Del</kbd>', 'delete selection'], ['<kbd>Ctrl</kbd>+<kbd>Z</kbd>', 'undo'],
+            ['Scroll', 'zoom'], ['Drag empty space', 'pan']];
+            const prompts = [
+                'Read my board with get_canvas_state, then add three go-to-market strategies to the right of the main idea and connect them to it.',
+                'Critique the board: highlight anything that is not linked, and leave an agent review note with your observations.',
+                'Arrange the board into clusters, then export it as markdown.'];
+            openModal(`
+  <button class="m-close">${icon('x', 15)}</button>
+  <div class="m-title">How Boardify works</div>
+  <div class="m-h">FOR HUMANS</div>
+  ${shortcuts.map(s => `<div class="krow"><span>${s[1]}</span><span>${s[0]}</span></div>`).join('')}
+  <div class="m-h">FOR AGENTS (WEBMCP)</div>
+  <p style="font-size:12.5px;line-height:1.55;color:var(--ink-soft)">In a WebMCP-enabled browser (ChatGPT in-app browser, or Chrome with WebMCP), Boardify registers <b>${Object.keys(TOOLS).length} tools</b> on <code style="color:var(--acc)">document.modelContext</code> automatically — no keys, no backend. The agent and you share one canvas. Click to copy a prompt:</p>
+  ${prompts.map((p, i) => `<button class="copy" data-p="${esc(p)}"><i>${icon('link', 13)}</i>${esc(p)}</button>`).join('')}
+  <div class="m-h">TOOL REGISTRY</div>
+  ${Object.values(TOOLS).map(t => `<div class="ttool"><code>${t.name}</code><span>${esc(t.description)}</span></div>`).join('')}
+  <p style="font-size:11.5px;color:var(--ink-soft);margin-top:14px;line-height:1.5">No WebMCP? The Agent Studio runs the same execute functions locally, so every mission exercises the identical code path an agent would.</p>`);
+            modalRoot.querySelectorAll('.copy').forEach(c => c.onclick = () => {
+                try { navigator.clipboard.writeText(c.dataset.p); toast('Prompt copied — paste it into your agent', 'ok'); }
+                catch (e) { toast('Copy failed — select the text manually', 'warn'); }
+            });
+        }
+
+        /* ================= seed / restore / boot ================= */
+        function seedBoard() {
+            const t = Date.now();
+            const n1 = createNode({
+                id: 'n1', title: 'Welcome to Boardify', author: 'human', color: 'butter',
+                body: 'This canvas is shared — you and any WebMCP agent both have hands here.\nDrag notes, double-click empty space to add one, drag from a note\'s port to link ideas.\nThen open Agent Studio and hand the agent a mission.', x: -30, y: -90, created: t
+            });
+            const n2 = createNode({
+                id: 'n2', title: 'Humans bring taste', author: 'human', color: 'sage',
+                body: 'Judgment, context, and a nose for the weird idea that is actually right.', x: -430, y: 170, created: t + 1
+            });
+            const n3 = createNode({
+                id: 'n3', title: 'Agents bring scale', author: 'agent', color: 'slate',
+                body: 'Exhaustive branches, clean taxonomies, tireless rearranging.', x: 370, y: 170, created: t + 2
+            });
+            connectCore('n1', 'n2', 'pairs with'); connectCore('n1', 'n3', 'pairs with');
+        }
+        function restore(data) {
+            nodes.forEach(n => n.el && n.el.remove()); nodes.clear(); edges.clear();
+            deselectAll(); seq = data.seq || 0;
+            (data.nodes || []).forEach(o => {
+                if (!nodes.has(o.id)) {
+                    const n = { ...o, el: null, h: 130 }; nodes.set(o.id, n); n.el = renderNode(n); n.h = n.el.offsetHeight;
+                }
+            });
+            (data.links || []).forEach(l => {
+                if (nodes.has(l.source) && nodes.has(l.target)) {
+                    const e = { id: l.id || ('e' + (++seq)), from: l.source, to: l.target, label: l.label || '' }; edges.set(e.id, e);
+                }
+            });
+            drawAll(); mark();
+        }
+
+        let booted = false;
+        (function boot() {
+            if (booted) return; booted = true;
+            let saved = null;
+            try { const s = localStorage.getItem(LS_KEY); if (s) saved = JSON.parse(s); } catch (e) { }
+            if (saved && saved.nodes && saved.nodes.length) restore(saved); else seedBoard();
+            fitView(false);
+            tryRegisterMCP();
+            if (document.fonts && document.fonts.ready)
+                document.fonts.ready.then(() => { nodes.forEach(n => n.h = n.el.offsetHeight); drawAll(); });
+            if (innerWidth < 1080) $('#studio').classList.add('closed');
+            if (!localStorage.getItem('boardify:seen')) {
+                setTimeout(() => toast('Tip: open Agent Studio (top right) and run a mission — or talk to me from any WebMCP browser.', 'info', 6000), 1000);
+                try { localStorage.setItem('boardify:seen', '1'); } catch (e) { }
+            }
+        })();
+        window.BOARDIFY.undo = undo; window.BOARDIFY.fit = () => fitView(true);
+    </script>
+</body>
+
+</html>
