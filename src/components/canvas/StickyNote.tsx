@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { CanvasNode, NoteColor } from '@/lib/types';
-import { Sparkles, Trash2, Edit3, Tag } from 'lucide-react';
+import { Sparkles, Trash2, Edit3, Tag, Bot, Zap, Database, Shield, Workflow, Globe, Layers, Cpu } from 'lucide-react';
 
 const COLOR_MAP: Record<NoteColor, string> = {
   butter: '#FFE9A8',
@@ -11,6 +11,17 @@ const COLOR_MAP: Record<NoteColor, string> = {
   slate: '#DAE5E6',
   lavender: '#E8DEFF',
   mint: '#C7F3E3',
+};
+
+const NODE_TYPE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
+  agent: { label: 'AGENT', icon: Bot, color: 'bg-indigo-600' },
+  tool: { label: 'TOOL', icon: Zap, color: 'bg-amber-600' },
+  database: { label: 'DATABASE', icon: Database, color: 'bg-emerald-700' },
+  api: { label: 'API / RPC', icon: Workflow, color: 'bg-blue-600' },
+  cloud: { label: 'CLOUD', icon: Globe, color: 'bg-cyan-700' },
+  auth: { label: 'AUTH', icon: Shield, color: 'bg-rose-600' },
+  trigger: { label: 'TRIGGER', icon: Sparkles, color: 'bg-purple-600' },
+  ui: { label: 'CLIENT UI', icon: Layers, color: 'bg-slate-700' },
 };
 
 interface StickyNoteProps {
@@ -100,21 +111,35 @@ export function StickyNote({
       {/* Sticky Tape Decorator */}
       <div className="sticky-tape pointer-events-none" />
 
-      {/* Author Chip */}
-      <div
-        className={`absolute -top-2.5 left-3 flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded shadow-sm ${
-          node.author === 'agent'
-            ? 'bg-[#E24E1B] text-white'
-            : 'bg-[#1D1A16] text-[#F4EFE4]'
-        }`}
-      >
-        {node.author === 'agent' ? (
-          <>
-            <Sparkles className="w-2.5 h-2.5" />
-            <span>AGENT</span>
-          </>
-        ) : (
-          <span>YOU</span>
+      {/* Author & Node Type Chip Container */}
+      <div className="absolute -top-2.5 left-3 flex items-center gap-1.5 z-10">
+        <div
+          className={`flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded shadow-sm ${
+            node.author === 'agent'
+              ? 'bg-[#E24E1B] text-white'
+              : 'bg-[#1D1A16] text-[#F4EFE4]'
+          }`}
+        >
+          {node.author === 'agent' ? (
+            <>
+              <Sparkles className="w-2.5 h-2.5" />
+              <span>AGENT</span>
+            </>
+          ) : (
+            <span>YOU</span>
+          )}
+        </div>
+
+        {/* Specialized Tool / Node Type Badge if available */}
+        {node.nodeType && node.nodeType !== 'default' && NODE_TYPE_CONFIG[node.nodeType] && (
+          <div
+            className={`flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded text-white shadow-xs ${
+              NODE_TYPE_CONFIG[node.nodeType].color
+            }`}
+          >
+            {React.createElement(NODE_TYPE_CONFIG[node.nodeType].icon, { className: 'w-2.5 h-2.5' })}
+            <span>{NODE_TYPE_CONFIG[node.nodeType].label}</span>
+          </div>
         )}
       </div>
 

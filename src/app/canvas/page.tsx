@@ -15,15 +15,20 @@ import {
   ToolLogEntry,
   WebMCPToolDef,
   NoteColor,
+  NodeType,
   generateNodeId,
   generateEdgeId,
 } from '@/lib/types';
 import {
-  loadBoard,
-  saveBoard,
+  DEFAULT_SEED_BOARD,
+  saveBoardState,
+  loadBoardState,
   subscribeToBoard,
   createBoardFromTemplate,
-  DEFAULT_SEED_BOARD,
+  listUserBoards,
+  createNewBoardRecord,
+  updateBoardIndexMeta,
+  BoardMetadata,
 } from '@/lib/firestore-boards';
 import { BOARD_TEMPLATES } from '@/lib/templates-data';
 import {
@@ -35,6 +40,7 @@ import {
   getBoundingBox,
   getCentroid,
   findFreeSpot,
+  calculateSmartFlowTargets,
   calculateClusterTargets,
   calculateTimelineTargets,
   calculateKanbanTargets,
@@ -45,7 +51,10 @@ import { generateDynamicPlan } from '@/lib/llm-client';
 import { X, Layers, Copy, Check, ExternalLink, HelpCircle } from 'lucide-react';
 
 function CanvasAppInner() {
-  const [boardId] = useState('default');
+  const [boards, setBoards] = useState<BoardMetadata[]>([]);
+  const [boardId, setBoardId] = useState('default');
+  const [activeBoardTitle, setActiveBoardTitle] = useState('Welcome Canvas');
+
   const [nodes, setNodes] = useState<CanvasNode[]>(DEFAULT_SEED_BOARD.nodes);
   const [edges, setEdges] = useState<CanvasEdge[]>(DEFAULT_SEED_BOARD.edges);
   const [seq, setSeq] = useState(DEFAULT_SEED_BOARD.seq);
@@ -78,6 +87,49 @@ function CanvasAppInner() {
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
 
+  // Load board list on mount
+  useEffect(() => {
+    const list = listUserBoards();
+    setBoards(list);
+    if (list.length > 0) {
+      setActiveBoardTitle(list.find(b => b.id === boardId)?.title || 'Welcome Canvas');
+    }
+  }, [boardId]);
+
+  const handleCreateNewBoard = useCallback((title = 'New Strategy Board') => {
+    const newId = createNewBoardRecord(title);
+    setBoardId(newId);
+    setActiveBoardTitle(title);
+    setBoards(listUserBoards());
+    setNodes([
+      {
+        id: generateNodeId(),
+        title,
+        body: 'Start drafting ideas, double-click empty space, or ask Agent Studio to architect a workflow!',
+        x: -115,
+        y: -70,
+        width: 230,
+        color: 'butter',
+        author: 'human',
+        created: Date.now(),
+        rot: 0,
+        nodeType: 'default',
+      },
+    ]);
+    setEdges([]);
+    setSeq(1);
+    setUndoStack([]);
+    showToast(`Created new canvas: "${title}"`, 'ok');
+    return newId;
+  }, [showToast]);
+
+  const handleSwitchBoard = useCallback((targetBoardId: string) => {
+    setBoardId(targetBoardId);
+    const meta = listUserBoards().find(b => b.id === targetBoardId);
+    if (meta) setActiveBoardTitle(meta.title);
+    showToast(`Switched to "${meta?.title || 'Canvas'}"`, 'info');
+  }, [showToast]);
+
   // Push undo snapshot
   const pushUndo = useCallback(() => {
     setUndoStack(prev => {
@@ -108,7 +160,15 @@ function CanvasAppInner() {
 
   // Node CRUD
   const handleAddNode = useCallback(
-    (x?: number, y?: number, color: NoteColor = 'butter', title = 'Untitled', body = '', author: 'human' | 'agent' = 'human') => {
+    (
+      x?: number,
+      y?: number,
+      color: NoteColor = 'butter',
+      title = 'Untitled',
+      body = '',
+      author: 'human' | 'agent' = 'human',
+      nodeType: NodeType = 'default'
+    ) => {
       pushUndo();
       const newId = generateNodeId();
       setSeq(prev => prev + 1);
@@ -133,6 +193,7 @@ function CanvasAppInner() {
         author,
         created: Date.now(),
         rot: ((Math.random() * 6) - 3) * 0.6,
+        nodeType,
       };
 
       setNodes(prev => [...prev, newNode]);
@@ -168,29 +229,25 @@ function CanvasAppInner() {
     (sourceId: string, targetId: string, label = '') => {
       if (sourceId === targetId) return null;
       const exists = edgesRef.current.some(
-        e => e.from === sourceId && e.to === targetId
+        e => (e.from === sourceId && e.to === targetId) || (e.from === targetId && e.to === sourceId)
       );
-      if (exists) {
-        showToast('Nodes are already linked', 'warn');
-        return null;
-      }
+      if (exists) return null;
 
       pushUndo();
-      const edgeId = generateEdgeId();
+      const newEdgeId = generateEdgeId();
       setSeq(prev => prev + 1);
 
       const newEdge: CanvasEdge = {
-        id: edgeId,
+        id: newEdgeId,
         from: sourceId,
         to: targetId,
         label,
       };
 
       setEdges(prev => [...prev, newEdge]);
-      showToast('Linked ideas', 'ok');
       return newEdge;
     },
-    [pushUndo, showToast]
+    [pushUndo]
   );
 
   const handleUpdateEdge = useCallback((id: string, updates: Partial<CanvasEdge>) => {
@@ -202,7 +259,7 @@ function CanvasAppInner() {
       pushUndo();
       setEdges(prev => prev.filter(e => e.id !== id));
       if (selectedEdgeId === id) setSelectedEdgeId(null);
-      showToast('Connection removed', 'info');
+      showToast('Wire removed', 'info');
     },
     [selectedEdgeId, pushUndo, showToast]
   );
@@ -213,52 +270,51 @@ function CanvasAppInner() {
     setEdges([]);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
-    showToast('Canvas cleared', 'info');
+    showToast('Canvas cleared', 'warn');
   }, [pushUndo, showToast]);
 
-  // Camera animations & tweening
-  const fitView = useCallback((animated = true) => {
+  const fitView = useCallback((animate = true) => {
     const bb = getBoundingBox(nodesRef.current);
-    if (!bb || typeof window === 'undefined') {
-      setCamera({ x: window.innerWidth / 2, y: window.innerHeight / 2, z: 1 });
+    if (!bb) {
+      setCamera({ x: 0, y: 0, z: 1 });
       return;
     }
 
-    const pad = 180;
-    const w = bb.width + pad * 2;
-    const h = bb.height + pad * 2;
-    const availW = window.innerWidth - (isStudioOpen ? 380 : 80);
-    const availH = window.innerHeight - 120;
+    const padding = 120;
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 800;
 
-    const scale = Math.max(0.3, Math.min(1.2, Math.min(availW / w, availH / h)));
-    const centerX = bb.minX + bb.width / 2;
-    const centerY = bb.minY + bb.height / 2;
+    const scaleX = (w - padding * 2) / (bb.width || 400);
+    const scaleY = (h - padding * 2) / (bb.height || 400);
+    const targetZ = Math.min(1.4, Math.max(0.35, Math.min(scaleX, scaleY)));
 
-    const targetX = (availW / 2) - centerX * scale + 40;
-    const targetY = (availH / 2) - centerY * scale + 60;
+    const centerX = (bb.minX + bb.maxX) / 2;
+    const centerY = (bb.minY + bb.maxY) / 2;
 
-    setCamera({ x: targetX, y: targetY, z: scale });
-  }, [isStudioOpen]);
+    const targetX = w / 2 - centerX * targetZ;
+    const targetY = h / 2 - centerY * targetZ;
 
-  const highlightNode = useCallback((nodeId: string, reason?: string) => {
-    const target = nodesRef.current.find(n => n.id === nodeId);
-    if (!target) return;
+    setCamera({ x: targetX, y: targetY, z: targetZ });
+  }, []);
 
-    setHighlightedNodeId(nodeId);
+  const highlightNode = useCallback((id: string, reason?: string) => {
+    setHighlightedNodeId(id);
     setHighlightReason(reason);
 
-    // Position ghost cursor
-    setAgentCursor({
-      x: target.x + (target.width || 230) / 2,
-      y: target.y + (target.height || 140) / 2,
-      isActive: true,
-      actionText: reason || 'Focusing note',
-    });
+    const target = nodesRef.current.find(n => n.id === id);
+    if (target) {
+      const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+      setCamera(prev => ({
+        ...prev,
+        x: w / 2 - target.x * prev.z,
+        y: h / 2 - target.y * prev.z,
+      }));
+    }
 
     setTimeout(() => {
       setHighlightedNodeId(null);
       setHighlightReason(undefined);
-      setAgentCursor(prev => ({ ...prev, isActive: false }));
     }, 3500);
   }, []);
 
@@ -287,13 +343,14 @@ function CanvasAppInner() {
   const webmcpActions: WebMCPContextActions = {
     getNodes: () => nodesRef.current,
     getEdges: () => edgesRef.current,
-    addNode: n => handleAddNode(n.x, n.y, n.color, n.title, n.body, n.author),
+    addNode: n => handleAddNode(n.x, n.y, n.color, n.title, n.body, n.author, (n as any).nodeType),
     updateNode: (id, u) => handleUpdateNode(id, u),
     deleteNode: id => handleDeleteNode(id),
     connectNodes: (src, tgt, lbl) => handleConnectNodes(src, tgt, lbl),
     animateLayout: targets => animateLayout(targets),
     highlightNode: (id, reason) => highlightNode(id, reason),
     clearCanvas: () => handleClearCanvas(),
+    createNewBoard: title => handleCreateNewBoard(title),
     addLog: entry => addLogEntry(entry),
   };
 
@@ -302,7 +359,7 @@ function CanvasAppInner() {
   // Initialize board from storage / Firestore & register WebMCP
   useEffect(() => {
     let active = true;
-    loadBoard(boardId).then(state => {
+    loadBoardState(boardId).then(state => {
       if (active && state) {
         setNodes(state.nodes);
         setEdges(state.edges);
@@ -320,10 +377,7 @@ function CanvasAppInner() {
 
     // Try registering on document.modelContext
     const registered = registerWebMCP(tools);
-    if (registered) {
-      setHasWebMCP(true);
-      showToast('WebMCP tools registered on document.modelContext', 'ok');
-    }
+    setHasWebMCP(registered);
 
     return () => {
       active = false;
@@ -331,18 +385,20 @@ function CanvasAppInner() {
     };
   }, [boardId]);
 
-  // Auto save on change
+  // Auto save on change & update board index
   useEffect(() => {
     const timer = setTimeout(() => {
-      saveBoard(boardId, {
+      saveBoardState(boardId, {
         version: 1,
         seq,
         nodes,
         edges,
       });
+      updateBoardIndexMeta(boardId, activeBoardTitle, nodes.length);
+      setBoards(listUserBoards());
     }, 600);
     return () => clearTimeout(timer);
-  }, [nodes, edges, seq, boardId]);
+  }, [nodes, edges, seq, boardId, activeBoardTitle]);
 
   // Quick mission runners
   const runMission = async (missionId: string) => {
@@ -493,7 +549,8 @@ function CanvasAppInner() {
           item.color || 'butter',
           item.title,
           item.body,
-          'agent'
+          'agent',
+          item.nodeType || 'default'
         );
         createdNodeMap.set(item.title.toLowerCase().trim(), node.id);
         spawnY += 150;
@@ -510,7 +567,7 @@ function CanvasAppInner() {
 
       showToast(plan.summary || `Added ${plan.nodes.length} notes and connected wires`, 'ok');
       setTimeout(() => {
-        animateLayout(calculateForceDirectedTargets(nodesRef.current, edgesRef.current));
+        animateLayout(calculateSmartFlowTargets(nodesRef.current, edgesRef.current));
       }, 300);
     } catch (err) {
       showToast('Failed to generate plan, please try again.', 'warn');
@@ -566,7 +623,14 @@ function CanvasAppInner() {
           canUndo={undoStack.length > 0}
           isStudioOpen={isStudioOpen}
           healthScore={healthReport.score}
+          boards={boards}
+          activeBoardId={boardId}
+          activeBoardTitle={activeBoardTitle}
           onAddNote={() => handleAddNode()}
+          onSmartArrange={() => {
+            animateLayout(calculateSmartFlowTargets(nodes, edges));
+            showToast('Arranged into smart hierarchical flow', 'ok');
+          }}
           onTidyForceDirected={() => {
             animateLayout(calculateForceDirectedTargets(nodes, edges));
             showToast('Untangled canvas with physics layout', 'ok');
@@ -593,6 +657,8 @@ function CanvasAppInner() {
           onOpenHelp={() => setIsHelpOpen(true)}
           onToggleStudio={() => setIsStudioOpen(!isStudioOpen)}
           onOpenHealth={() => setIsStudioOpen(true)}
+          onCreateNewBoard={() => handleCreateNewBoard()}
+          onSwitchBoard={handleSwitchBoard}
         />
 
         {/* Agent Studio Drawer */}

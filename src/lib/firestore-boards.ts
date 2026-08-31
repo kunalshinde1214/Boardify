@@ -149,6 +149,9 @@ export async function saveBoard(boardId: string, state: CanvasState): Promise<vo
   }
 }
 
+export const saveBoardState = saveBoard;
+export const loadBoardState = loadBoard;
+
 export function subscribeToBoard(
   boardId: string,
   onUpdate: (state: CanvasState) => void
@@ -185,6 +188,101 @@ export function subscribeToBoard(
   return () => window.removeEventListener('storage', handleStorage);
 }
 
+export interface BoardMetadata {
+  id: string;
+  title: string;
+  updatedAt: number;
+  nodeCount: number;
+}
+
+const BOARDS_INDEX_KEY = 'boardify:boards_index';
+
+export function listUserBoards(): BoardMetadata[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(BOARDS_INDEX_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // fallback
+  }
+
+  // Initial default board if index is empty
+  const defaultMeta: BoardMetadata = {
+    id: 'default',
+    title: 'Welcome Canvas',
+    updatedAt: Date.now(),
+    nodeCount: 3,
+  };
+  saveBoardsIndex([defaultMeta]);
+  return [defaultMeta];
+}
+
+export function saveBoardsIndex(list: BoardMetadata[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(BOARDS_INDEX_KEY, JSON.stringify(list));
+  } catch {
+    // ignore
+  }
+}
+
+export function createNewBoardRecord(title = 'Untitled Canvas', initialSeed?: CanvasState): string {
+  const newId = 'board_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+  const blankState: CanvasState = initialSeed || {
+    version: 1,
+    seq: 1,
+    nodes: [
+      {
+        id: 'n_root_' + Date.now(),
+        title: title,
+        body: 'Start drafting ideas, double-click empty space, or ask Agent Studio to architect a workflow!',
+        x: -115,
+        y: -70,
+        width: 230,
+        color: 'butter',
+        author: 'human',
+        created: Date.now(),
+        rot: 0,
+        nodeType: 'default',
+      },
+    ],
+    edges: [],
+    updatedAt: Date.now(),
+  };
+
+  saveBoardState(newId, blankState);
+
+  const existing = listUserBoards();
+  const updated: BoardMetadata[] = [
+    {
+      id: newId,
+      title,
+      updatedAt: Date.now(),
+      nodeCount: blankState.nodes.length,
+    },
+    ...existing.filter(b => b.id !== newId),
+  ];
+  saveBoardsIndex(updated);
+
+  return newId;
+}
+
+export function updateBoardIndexMeta(id: string, title: string, nodeCount: number): void {
+  const existing = listUserBoards();
+  const idx = existing.findIndex(b => b.id === id);
+  if (idx !== -1) {
+    existing[idx].title = title;
+    existing[idx].nodeCount = nodeCount;
+    existing[idx].updatedAt = Date.now();
+  } else {
+    existing.unshift({ id, title, nodeCount, updatedAt: Date.now() });
+  }
+  saveBoardsIndex(existing);
+}
+
 export function createBoardFromTemplate(template: BoardTemplate): CanvasState {
   const timestamp = Date.now();
   const nodes: CanvasNode[] = template.nodes.map((n, idx) => {
@@ -199,6 +297,7 @@ export function createBoardFromTemplate(template: BoardTemplate): CanvasState {
       author: n.author || 'human',
       created: timestamp + idx * 10,
       rot: ((idx * 37) % 7 - 3) * 0.6,
+      nodeType: 'default',
     };
   });
 
@@ -217,3 +316,4 @@ export function createBoardFromTemplate(template: BoardTemplate): CanvasState {
     updatedAt: Date.now(),
   };
 }
+

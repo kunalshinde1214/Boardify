@@ -89,6 +89,100 @@ export function getConnectedComponents(nodes: CanvasNode[], edges: CanvasEdge[])
     .sort((a, b) => b.length - a.length);
 }
 
+export function calculateSmartFlowTargets(nodes: CanvasNode[], edges: CanvasEdge[]): Map<string, { x: number; y: number }> {
+  const targets = new Map<string, { x: number; y: number }>();
+  if (nodes.length === 0) return targets;
+  if (nodes.length === 1) {
+    targets.set(nodes[0].id, { x: -115, y: -70 });
+    return targets;
+  }
+
+  const adj = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+
+  nodes.forEach(n => {
+    adj.set(n.id, []);
+    inDegree.set(n.id, 0);
+  });
+
+  edges.forEach(e => {
+    if (adj.has(e.from) && inDegree.has(e.to)) {
+      adj.get(e.from)!.push(e.to);
+      inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1);
+    }
+  });
+
+  // Assign levels / columns via topological traversal
+  const levels = new Map<string, number>();
+  const queue: { id: string; level: number }[] = [];
+
+  // Start with root notes (inDegree === 0)
+  nodes.forEach(n => {
+    if ((inDegree.get(n.id) || 0) === 0) {
+      queue.push({ id: n.id, level: 0 });
+      levels.set(n.id, 0);
+    }
+  });
+
+  // If no root (cycle), pick oldest note as level 0
+  if (queue.length === 0) {
+    const oldest = [...nodes].sort((a, b) => a.created - b.created)[0];
+    queue.push({ id: oldest.id, level: 0 });
+    levels.set(oldest.id, 0);
+  }
+
+  const visited = new Set<string>();
+  while (queue.length > 0) {
+    const { id, level } = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+
+    (adj.get(id) || []).forEach(childId => {
+      const currentChildLevel = levels.get(childId) ?? -1;
+      const nextLevel = Math.max(currentChildLevel, level + 1);
+      levels.set(childId, nextLevel);
+      queue.push({ id: childId, level: nextLevel });
+    });
+  }
+
+  // Handle any remaining disconnected notes
+  nodes.forEach(n => {
+    if (!levels.has(n.id)) {
+      levels.set(n.id, 0);
+    }
+  });
+
+  // Group nodes by level (column)
+  const columns = new Map<number, CanvasNode[]>();
+  nodes.forEach(n => {
+    const lvl = levels.get(n.id) || 0;
+    if (!columns.has(lvl)) columns.set(lvl, []);
+    columns.get(lvl)!.push(n);
+  });
+
+  const sortedLevels = Array.from(columns.keys()).sort((a, b) => a - b);
+  const totalCols = sortedLevels.length;
+  const colPitch = 340;
+  const startX = -((totalCols - 1) * colPitch) / 2 - 115;
+
+  sortedLevels.forEach((lvl, colIndex) => {
+    const colNodes = columns.get(lvl)!;
+    const colX = startX + colIndex * colPitch;
+    const rowPitch = 180;
+    const totalHeight = (colNodes.length - 1) * rowPitch;
+    const startY = -(totalHeight / 2) - 70;
+
+    colNodes.forEach((n, rowIndex) => {
+      targets.set(n.id, {
+        x: Math.round(colX),
+        y: Math.round(startY + rowIndex * rowPitch),
+      });
+    });
+  });
+
+  return targets;
+}
+
 export function calculateClusterTargets(nodes: CanvasNode[], edges: CanvasEdge[]): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
   const bb = getBoundingBox(nodes);

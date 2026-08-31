@@ -20,6 +20,7 @@ export interface WebMCPContextActions {
   animateLayout: (targets: Map<string, { x: number; y: number }>) => void;
   highlightNode: (id: string, reason?: string) => void;
   clearCanvas: () => void;
+  createNewBoard?: (title: string) => string;
   addLog: (entry: Omit<ToolLogEntry, 'id' | 'timestamp'>) => void;
 }
 
@@ -460,6 +461,29 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
       const targets = calculateClusterTargets(nodes, edges);
       actions.animateLayout(targets);
       return { success: true, clustered_count: targets.size };
+    },
+  };
+
+  // 13. create_new_board
+  tools.create_new_board = {
+    name: 'create_new_board',
+    description: 'Create a fresh, dedicated whiteboard canvas for a new project, strategic initiative, or separate toolchain diagram.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Title or topic for the new canvas' },
+      },
+      required: ['title'],
+    },
+    run: input => {
+      const title = String(input.title || 'New Canvas').trim();
+      const newBoardId = actions.createNewBoard ? actions.createNewBoard(title) : 'board_' + Date.now();
+      return {
+        success: true,
+        board_id: newBoardId,
+        title,
+        message: `Created new whiteboard canvas: "${title}"`,
+      };
     },
   };
 

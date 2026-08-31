@@ -1,5 +1,7 @@
 export type NoteColor = 'butter' | 'sage' | 'coral' | 'slate' | 'lavender' | 'mint';
 
+export type NodeType = 'default' | 'agent' | 'tool' | 'database' | 'api' | 'cloud' | 'auth' | 'trigger' | 'ui';
+
 export interface CanvasNode {
   id: string;
   title: string;
@@ -13,6 +15,7 @@ export interface CanvasNode {
   created: number;
   rot?: number;
   tags?: string[];
+  nodeType?: NodeType;
 }
 
 export interface CanvasEdge {

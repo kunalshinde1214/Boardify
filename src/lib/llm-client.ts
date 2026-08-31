@@ -14,6 +14,7 @@ export interface GeneratedPlan {
     title: string;
     body: string;
     color: NoteColor;
+    nodeType?: 'default' | 'agent' | 'tool' | 'database' | 'api' | 'cloud' | 'auth' | 'trigger' | 'ui';
     suggestedOffset?: { x: number; y: number };
   }[];
   links: {
@@ -51,7 +52,7 @@ export async function generateDynamicPlan(
     .map(n => `- [${n.id}] "${n.title}": ${n.body}`)
     .join('\n');
 
-  const systemInstruction = `You are a spatial whiteboard strategy architect for Boardify.
+  const systemInstruction = `You are a spatial whiteboard strategy and systems architecture expert for Boardify.
 The user is working on an infinite canvas with sticky notes and directional connection wires.
 Existing board context:
 ${contextNotes || '(Board is empty)'}
@@ -65,14 +66,15 @@ Return ONLY a JSON object with this exact structure:
     {
       "title": "Short punchy title (under 5 words)",
       "body": "Clear actionable description (1-2 sentences)",
-      "color": "butter" | "sage" | "coral" | "slate" | "lavender" | "mint"
+      "color": "butter" | "sage" | "coral" | "slate" | "lavender" | "mint",
+      "nodeType": "default" | "agent" | "tool" | "database" | "api" | "cloud" | "auth" | "trigger" | "ui"
     }
   ],
   "links": [
     {
       "sourceTitle": "Exact title of source note",
       "targetTitle": "Exact title of target note",
-      "label": "relationship label (e.g. 'drives', 'depends on', 'expands', 'pro', 'con')"
+      "label": "1. triggers" | "2. queries" | "3. transforms" | "depends on" | "expands" | "pro" | "con"
     }
   ]
 }`;
@@ -222,15 +224,60 @@ function generateHeuristicPlan(prompt: string, existingNodes: CanvasNode[]): Gen
     };
   }
 
+  // If prompt is Workflow, Toolchain, or System Architecture
+  if (p.includes('flow') || p.includes('workflow') || p.includes('tool') || p.includes('pipeline') || p.includes('arch')) {
+    return {
+      summary: `Synthesized multi-stage toolchain workflow for: "${prompt.slice(0, 40)}"`,
+      nodes: [
+        {
+          title: 'User Prompt Trigger',
+          body: 'Human input or web event dispatches natural language instruction.',
+          color: 'butter',
+          nodeType: 'trigger',
+        },
+        {
+          title: 'WebMCP Agent Engine',
+          body: 'Browser LLM matches intent against document.modelContext schemas.',
+          color: 'lavender',
+          nodeType: 'agent',
+        },
+        {
+          title: 'WebMCP Tool Dispatch',
+          body: 'Executes add_idea_node and connect_nodes in sub-20ms window context.',
+          color: 'coral',
+          nodeType: 'tool',
+        },
+        {
+          title: 'Firestore Real-Time DB',
+          body: 'Persists coordinates, author tags, and connection wire state.',
+          color: 'sage',
+          nodeType: 'database',
+        },
+        {
+          title: 'Spatial Canvas UI',
+          body: 'Smoothly renders SVG wires, physics layout, and tactile sticky notes.',
+          color: 'mint',
+          nodeType: 'ui',
+        },
+      ],
+      links: [
+        { sourceTitle: 'User Prompt Trigger', targetTitle: 'WebMCP Agent Engine', label: '1. dispatches intent' },
+        { sourceTitle: 'WebMCP Agent Engine', targetTitle: 'WebMCP Tool Dispatch', label: '2. invokes RPC tool' },
+        { sourceTitle: 'WebMCP Tool Dispatch', targetTitle: 'Firestore Real-Time DB', label: '3. syncs state' },
+        { sourceTitle: 'Firestore Real-Time DB', targetTitle: 'Spatial Canvas UI', label: '4. updates DOM 60fps' },
+      ],
+    };
+  }
+
   // If prompt is SWOT
   if (p.includes('swot') || p.includes('matrix')) {
     return {
       summary: `Generated 4-quadrant strategic matrix for: "${prompt.slice(0, 40)}"`,
       nodes: [
-        { title: 'STRENGTHS', body: 'Unique protocol architecture, sub-20ms latency, zero-setup onboarding.', color: 'sage' },
-        { title: 'WEAKNESSES', body: 'Early-stage standard awareness requiring clear developer onboarding guides.', color: 'coral' },
-        { title: 'OPPORTUNITIES', body: 'Chrome and OpenAI pushing WebMCP as the default browser agent protocol.', color: 'mint' },
-        { title: 'THREATS', body: 'Incumbent tools attempting proprietary walled-garden copycats.', color: 'butter' },
+        { title: 'STRENGTHS', body: 'Unique protocol architecture, sub-20ms latency, zero-setup onboarding.', color: 'sage', nodeType: 'trigger' },
+        { title: 'WEAKNESSES', body: 'Early-stage standard awareness requiring clear developer onboarding guides.', color: 'coral', nodeType: 'default' },
+        { title: 'OPPORTUNITIES', body: 'Chrome and OpenAI pushing WebMCP as the default browser agent protocol.', color: 'mint', nodeType: 'agent' },
+        { title: 'THREATS', body: 'Incumbent tools attempting proprietary walled-garden copycats.', color: 'butter', nodeType: 'auth' },
       ],
       links: [
         { sourceTitle: 'STRENGTHS', targetTitle: 'OPPORTUNITIES', label: 'leverages' },
