@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CanvasNode, CanvasEdge } from '@/lib/types';
-import { generateMarkdownExport, generateMermaidExport } from '@/lib/layouts';
-import { X, Download, Copy, Check, FileText, Code2, Network } from 'lucide-react';
+import { generateMarkdownExport, generateMermaidExport, getBoundingBox } from '@/lib/layouts';
+import { X, Download, Copy, Check, FileText, Code2, Network, Image as ImageIcon, Printer, Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 
 interface ExportModalProps {
@@ -14,32 +14,87 @@ interface ExportModalProps {
 }
 
 export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps) {
-  const [activeTab, setActiveTab] = useState<'markdown' | 'mermaid' | 'json'>('markdown');
+  const [activeTab, setActiveTab] = useState<'image' | 'pdf' | 'markdown' | 'mermaid' | 'json'>('image');
   const [copied, setCopied] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [isRenderingImage, setIsRenderingImage] = useState(false);
   const { showToast } = useToast();
+
+  // Generate canvas PNG preview
+  useEffect(() => {
+    if (!isOpen || !nodes.length) return;
+
+    setIsRenderingImage(true);
+    const timer = setTimeout(() => {
+      try {
+        const url = renderBoardToCanvasDataUrl(nodes, edges);
+        setPreviewImageUrl(url);
+      } catch (err) {
+        console.warn('Failed to render canvas preview:', err);
+      } finally {
+        setIsRenderingImage(false);
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, nodes, edges]);
 
   if (!isOpen) return null;
 
-  let content = '';
+  let textContent = '';
   if (activeTab === 'mermaid') {
-    content = generateMermaidExport(nodes, edges);
+    textContent = generateMermaidExport(nodes, edges);
   } else if (activeTab === 'json') {
-    content = JSON.stringify({ version: 1, nodes, edges }, null, 2);
-  } else {
-    content = generateMarkdownExport(nodes, edges);
+    textContent = JSON.stringify({ version: 1, nodes, edges }, null, 2);
+  } else if (activeTab === 'markdown') {
+    textContent = generateMarkdownExport(nodes, edges);
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content);
+    if (activeTab === 'image' && previewImageUrl) {
+      // Copy image blob to clipboard if supported
+      fetch(previewImageUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          setCopied(true);
+          showToast('Copied high-res image to clipboard!', 'ok');
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {
+          navigator.clipboard.writeText(previewImageUrl);
+          showToast('Copied Image data to clipboard', 'ok');
+        });
+      return;
+    }
+
+    navigator.clipboard.writeText(textContent);
     setCopied(true);
     showToast('Copied export to clipboard!', 'ok');
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
+    if (activeTab === 'image') {
+      if (!previewImageUrl) return;
+      const a = document.createElement('a');
+      a.href = previewImageUrl;
+      a.download = `boardify-canvas-${Date.now()}.png`;
+      a.click();
+      showToast('Downloaded High-Res PNG Image!', 'ok');
+      return;
+    }
+
+    if (activeTab === 'pdf') {
+      if (!previewImageUrl) return;
+      printCanvasAsPDF(previewImageUrl, 'Boardify Strategy Canvas');
+      showToast('Opening print dialog for PDF export...', 'info');
+      return;
+    }
+
     const ext = activeTab === 'json' ? 'json' : activeTab === 'mermaid' ? 'mmd' : 'md';
     const mime = activeTab === 'json' ? 'application/json' : 'text/plain';
-    const blob = new Blob([content], { type: mime });
+    const blob = new Blob([textContent], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -51,7 +106,7 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D1A16]/50 backdrop-blur-xs animate-note-pop">
-      <div className="bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-[6px_6px_0_#1D1A16] overflow-hidden">
+      <div className="bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-[6px_6px_0_#1D1A16] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#DCD4C2] bg-[#F4EFE4]/60">
           <div>
@@ -59,61 +114,69 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
               Export Canvas
             </h2>
             <p className="text-xs text-[#6B6353]">
-              Structured exports powered by the same <code className="text-[#E24E1B] font-mono">export_canvas</code> tool WebMCP agents call.
+              Download high-resolution visuals or structured documents powered by WebMCP.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg border border-[#1D1A16] bg-[#FFFDF6] hover:bg-[#F4EFE4] transition-colors"
+            className="p-1.5 rounded-lg border border-[#1D1A16] bg-[#FFFDF6] hover:bg-[#F4EFE4] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab selection */}
-        <div className="flex items-center gap-2 px-6 pt-4">
-          <button
-            onClick={() => setActiveTab('markdown')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'markdown'
-                ? 'bg-[#1D1A16] text-[#F4EFE4]'
-                : 'bg-[#F4EFE4] text-[#1D1A16] border border-[#DCD4C2] hover:bg-[#EAE2D2]'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Markdown Outline</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('mermaid')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'mermaid'
-                ? 'bg-[#1D1A16] text-[#F4EFE4]'
-                : 'bg-[#F4EFE4] text-[#1D1A16] border border-[#DCD4C2] hover:bg-[#EAE2D2]'
-            }`}
-          >
-            <Network className="w-3.5 h-3.5" />
-            <span>Mermaid Chart</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('json')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'json'
-                ? 'bg-[#1D1A16] text-[#F4EFE4]'
-                : 'bg-[#F4EFE4] text-[#1D1A16] border border-[#DCD4C2] hover:bg-[#EAE2D2]'
-            }`}
-          >
-            <Code2 className="w-3.5 h-3.5" />
-            <span>JSON State</span>
-          </button>
+        <div className="flex items-center gap-1.5 px-6 pt-4 overflow-x-auto">
+          {[
+            { id: 'image', label: 'PNG Image', icon: ImageIcon },
+            { id: 'pdf', label: 'PDF Document', icon: Printer },
+            { id: 'markdown', label: 'Markdown', icon: FileText },
+            { id: 'mermaid', label: 'Mermaid', icon: Network },
+            { id: 'json', label: 'JSON State', icon: Code2 },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? 'bg-[#1D1A16] text-[#F4EFE4] shadow-[2px_2px_0_#6B6353]'
+                    : 'bg-[#F4EFE4] text-[#1D1A16] border border-[#DCD4C2] hover:bg-[#EAE2D2]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Preview box */}
-        <div className="p-6 flex-1 overflow-hidden flex flex-col">
-          <div className="relative flex-1 bg-[#1D1A16] text-[#F4EFE4] rounded-xl p-4 font-mono text-xs overflow-auto border border-[#1D1A16] max-h-[360px]">
-            <pre className="whitespace-pre-wrap">{content}</pre>
-          </div>
+        <div className="p-6 flex-1 overflow-hidden flex flex-col min-h-[320px]">
+          {activeTab === 'image' || activeTab === 'pdf' ? (
+            <div className="relative flex-1 bg-[#F4EFE4] rounded-xl p-4 border-2 border-[#DCD4C2] flex items-center justify-center overflow-auto max-h-[380px]">
+              {isRenderingImage ? (
+                <div className="flex items-center gap-2 text-xs font-bold text-[#6B6353]">
+                  <Sparkles className="w-4 h-4 animate-spin text-[#E24E1B]" />
+                  <span>Rendering 2x Retina Snapshot...</span>
+                </div>
+              ) : previewImageUrl ? (
+                <img
+                  src={previewImageUrl}
+                  alt="Boardify Canvas Export Preview"
+                  className="max-h-full max-w-full object-contain rounded-lg shadow-md border border-[#1D1A16]/20"
+                />
+              ) : (
+                <span className="text-xs text-[#6B6353]">No notes to render</span>
+              )}
+            </div>
+          ) : (
+            <div className="relative flex-1 bg-[#1D1A16] text-[#F4EFE4] rounded-xl p-4 font-mono text-xs overflow-auto border border-[#1D1A16] max-h-[380px]">
+              <pre className="whitespace-pre-wrap">{textContent}</pre>
+            </div>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -123,24 +186,246 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
           </span>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#1D1A16] bg-[#FFFDF6] text-xs font-bold shadow-[2px_2px_0_#1D1A16] hover:bg-[#F4EFE4] active:translate-x-[1px] active:translate-y-[1px] transition-all"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
-            </button>
+            {activeTab !== 'pdf' && (
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#1D1A16] bg-[#FFFDF6] text-xs font-bold shadow-[2px_2px_0_#1D1A16] hover:bg-[#F4EFE4] active:translate-x-[1px] active:translate-y-[1px] transition-all cursor-pointer"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+            )}
 
             <button
               onClick={handleDownload}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#E24E1B] text-white text-xs font-bold border border-[#1D1A16] shadow-[2px_2px_0_#1D1A16] hover:bg-[#B33A10] active:translate-x-[1px] active:translate-y-[1px] transition-all"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#E24E1B] text-white text-xs font-bold border border-[#1D1A16] shadow-[2px_2px_0_#1D1A16] hover:bg-[#B33A10] active:translate-x-[1px] active:translate-y-[1px] transition-all cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download File</span>
+              {activeTab === 'pdf' ? (
+                <>
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print / Save as PDF</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download {activeTab === 'image' ? 'PNG' : activeTab.toUpperCase()}</span>
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Renders full canvas graph onto offscreen HTML5 canvas with 2x retina scaling
+ */
+function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): string {
+  if (!nodes.length) return '';
+
+  const bb = getBoundingBox(nodes);
+  if (!bb) return '';
+
+  const padding = 80;
+  const width = Math.max(900, bb.width + padding * 2);
+  const height = Math.max(600, bb.height + padding * 2);
+  const dpr = 2; // Retina scale
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  ctx.scale(dpr, dpr);
+
+  // 1. Draw warm paper background
+  ctx.fillStyle = '#F4EFE4';
+  ctx.fillRect(0, 0, width, height);
+
+  // 2. Draw dot grid
+  ctx.fillStyle = 'rgba(29, 26, 22, 0.12)';
+  const dotSpacing = 24;
+  for (let x = 0; x < width; x += dotSpacing) {
+    for (let y = 0; y < height; y += dotSpacing) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Offset origin relative to bounding box
+  const offsetX = padding - bb.minX;
+  const offsetY = padding - bb.minY;
+
+  // Node map
+  const nodeMap = new Map<string, CanvasNode>(nodes.map(n => [n.id, n]));
+
+  // 3. Draw connection wires
+  edges.forEach(edge => {
+    const src = nodeMap.get(edge.from);
+    const tgt = nodeMap.get(edge.to);
+    if (!src || !tgt) return;
+
+    const sx = src.x + (src.width || 230) + offsetX;
+    const sy = src.y + 70 + offsetY;
+    const tx = tgt.x + offsetX;
+    const ty = tgt.y + 70 + offsetY;
+
+    const dx = Math.abs(tx - sx) * 0.5;
+    const cp1x = sx + Math.max(40, dx);
+    const cp1y = sy;
+    const cp2x = tx - Math.max(40, dx);
+    const cp2y = ty;
+
+    // Draw curve
+    ctx.strokeStyle = '#57503F';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tx, ty);
+    ctx.stroke();
+
+    // Draw arrowhead
+    const arrowSize = 8;
+    ctx.fillStyle = '#57503F';
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - arrowSize, ty - arrowSize * 0.6);
+    ctx.lineTo(tx - arrowSize, ty + arrowSize * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw label
+    if (edge.label) {
+      const mx = (sx + tx) / 2;
+      const my = (sy + ty) / 2;
+      ctx.font = 'bold 10px sans-serif';
+      const textMetrics = ctx.measureText(edge.label);
+      const bgW = textMetrics.width + 12;
+      const bgH = 18;
+
+      ctx.fillStyle = '#FFFDF6';
+      ctx.strokeStyle = '#1D1A16';
+      ctx.lineWidth = 1;
+      ctx.fillRect(mx - bgW / 2, my - bgH / 2, bgW, bgH);
+      ctx.strokeRect(mx - bgW / 2, my - bgH / 2, bgW, bgH);
+
+      ctx.fillStyle = '#1D1A16';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(edge.label, mx, my);
+    }
+  });
+
+  // 4. Draw Sticky Notes
+  const COLOR_MAP: Record<string, string> = {
+    butter: '#FFE9A8',
+    sage: '#DCEBC8',
+    coral: '#FFD8C7',
+    slate: '#DAE5E6',
+    lavender: '#E8DEFF',
+    mint: '#C7F3E3',
+  };
+
+  nodes.forEach(node => {
+    const nx = node.x + offsetX;
+    const ny = node.y + offsetY;
+    const nw = node.width || 230;
+    const nh = 140;
+
+    // Note shadow
+    ctx.fillStyle = 'rgba(29, 26, 22, 0.14)';
+    ctx.fillRect(nx + 3, ny + 4, nw, nh);
+
+    // Note background
+    ctx.fillStyle = COLOR_MAP[node.color] || '#FFE9A8';
+    ctx.fillRect(nx, ny, nw, nh);
+
+    // Border
+    ctx.strokeStyle = '#1D1A16';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(nx, ny, nw, nh);
+
+    // Author Tag
+    const tag = node.author === 'agent' ? 'AGENT' : 'YOU';
+    ctx.fillStyle = node.author === 'agent' ? '#E24E1B' : '#1D1A16';
+    ctx.fillRect(nx + 10, ny - 8, 44, 14);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tag, nx + 32, ny - 1);
+
+    // Title
+    ctx.fillStyle = '#1D1A16';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const titleText = node.title.length > 26 ? node.title.slice(0, 24) + '…' : node.title;
+    ctx.fillText(titleText, nx + 12, ny + 16);
+
+    // Divider
+    ctx.strokeStyle = 'rgba(29, 26, 22, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(nx + 12, ny + 34);
+    ctx.lineTo(nx + nw - 12, ny + 34);
+    ctx.stroke();
+
+    // Body text
+    ctx.fillStyle = '#403A2F';
+    ctx.font = '10px sans-serif';
+    const bodyWords = (node.body || '').split('\n');
+    let lineY = ny + 42;
+    bodyWords.slice(0, 4).forEach(line => {
+      const truncated = line.length > 34 ? line.slice(0, 32) + '…' : line;
+      ctx.fillText(truncated, nx + 12, lineY);
+      lineY += 16;
+    });
+  });
+
+  // 5. Watermark Footer
+  ctx.fillStyle = '#6B6353';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('Boardify · WebMCP Spatial Whiteboard', width - 20, height - 16);
+
+  return canvas.toDataURL('image/png');
+}
+
+/**
+ * Triggers clean print-to-PDF window
+ */
+function printCanvasAsPDF(imageDataUrl: string, title: string): void {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          @page { size: landscape; margin: 15mm; }
+          body { margin: 0; padding: 20px; background: #F4EFE4; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; }
+          img { max-width: 100%; height: auto; border: 2px solid #1D1A16; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+          .header { margin-bottom: 16px; text-align: center; }
+          h1 { margin: 0; font-size: 24px; color: #1D1A16; }
+          p { margin: 6px 0 0; font-size: 11px; color: #6B6353; font-family: monospace; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${title}</h1>
+          <p>Generated by Boardify WebMCP Collaborative Whiteboard · ${new Date().toLocaleString()}</p>
+        </div>
+        <img src="${imageDataUrl}" onload="window.print();" />
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
