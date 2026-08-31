@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { BoardHealthReport } from '@/lib/layouts';
-import { ShieldCheck, AlertTriangle, CheckCircle, ArrowRight, Zap, RefreshCw } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, CheckCircle, ArrowRight, Zap, RefreshCw, MapPin, Sparkles } from 'lucide-react';
 
 interface GraphHealthViewProps {
   report: BoardHealthReport;
@@ -104,10 +104,11 @@ export function GraphHealthView({
               <button
                 key={node.id}
                 onClick={() => onHighlightNode(node.id, 'Unconnected orphan note')}
-                className="text-[10px] px-2 py-0.5 bg-[#FFFDF6] border border-[#1D1A16] rounded-md font-semibold text-[#1D1A16] hover:bg-[#FFE9A8] transition-colors"
+                className="text-[10px] px-2 py-0.5 bg-[#FFFDF6] border border-[#1D1A16] rounded-md font-semibold text-[#1D1A16] hover:bg-[#FFE9A8] transition-colors flex items-center gap-1 cursor-pointer"
                 title="Click to focus note on canvas"
               >
-                📍 {node.title.slice(0, 16)}…
+                <MapPin className="w-2.5 h-2.5 text-[#E24E1B]" />
+                <span>{node.title.slice(0, 16)}…</span>
               </button>
             ))}
           </div>

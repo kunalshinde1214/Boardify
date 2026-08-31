@@ -496,19 +496,19 @@ export function analyzeBoardHealth(nodes: CanvasNode[], edges: CanvasEdge[]): Bo
 
   const insights: string[] = [];
   if (orphanNodes.length === 0) {
-    insights.push('✅ Graph is 100% interconnected with no orphan thoughts.');
+    insights.push('Graph is 100% interconnected with no orphan thoughts.');
   } else {
-    insights.push(`⚠️ ${orphanNodes.length} orphan note${orphanNodes.length > 1 ? 's' : ''} lack connecting relationships.`);
+    insights.push(`${orphanNodes.length} orphan note${orphanNodes.length > 1 ? 's' : ''} lack connecting relationships.`);
   }
 
   if (bottleneckNodes.length > 0) {
-    insights.push(`🎯 Key anchor note: "${bottleneckNodes[0].title}" has ${connectionCounts.get(bottleneckNodes[0].id)} connected links.`);
+    insights.push(`Key anchor note: "${bottleneckNodes[0].title}" has ${connectionCounts.get(bottleneckNodes[0].id)} connected links.`);
   }
 
   if (agentCount > 0) {
-    insights.push(`🤖 Collaborative balance: ${humanCount} human notes, ${agentCount} agent notes.`);
+    insights.push(`Collaborative balance: ${humanCount} human notes, ${agentCount} agent notes.`);
   } else {
-    insights.push('💡 Tip: Trigger an Agent Studio mission to add sub-branches.');
+    insights.push('Tip: Trigger an Agent Studio mission to add sub-branches.');
   }
 
   const suggestions: BoardHealthReport['suggestions'] = [];

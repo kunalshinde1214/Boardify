@@ -2,7 +2,17 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { CanvasNode, NoteColor } from '@/lib/types';
-import { Sparkles, Trash2, Edit3, Tag, Bot, Zap, Database, Shield, Workflow, Globe, Layers, Cpu } from 'lucide-react';
+import { Sparkles, Trash2, Edit3, Tag } from 'lucide-react';
+import {
+  AgentBadgeIcon,
+  ToolBadgeIcon,
+  DatabaseBadgeIcon,
+  ApiBadgeIcon,
+  AuthBadgeIcon,
+  TriggerBadgeIcon,
+  UIBadgeIcon,
+  WebMCPIcon,
+} from '@/components/ui/BrandIcons';
 
 const COLOR_MAP: Record<NoteColor, string> = {
   butter: '#FFE9A8',
@@ -14,14 +24,14 @@ const COLOR_MAP: Record<NoteColor, string> = {
 };
 
 const NODE_TYPE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
-  agent: { label: 'AGENT', icon: Bot, color: 'bg-indigo-600' },
-  tool: { label: 'TOOL', icon: Zap, color: 'bg-amber-600' },
-  database: { label: 'DATABASE', icon: Database, color: 'bg-emerald-700' },
-  api: { label: 'API / RPC', icon: Workflow, color: 'bg-blue-600' },
-  cloud: { label: 'CLOUD', icon: Globe, color: 'bg-cyan-700' },
-  auth: { label: 'AUTH', icon: Shield, color: 'bg-rose-600' },
-  trigger: { label: 'TRIGGER', icon: Sparkles, color: 'bg-purple-600' },
-  ui: { label: 'CLIENT UI', icon: Layers, color: 'bg-slate-700' },
+  agent: { label: 'AGENT', icon: AgentBadgeIcon, color: 'bg-indigo-600' },
+  tool: { label: 'TOOL', icon: ToolBadgeIcon, color: 'bg-amber-600' },
+  database: { label: 'DATABASE', icon: DatabaseBadgeIcon, color: 'bg-emerald-700' },
+  api: { label: 'API / RPC', icon: ApiBadgeIcon, color: 'bg-blue-600' },
+  cloud: { label: 'CLOUD', icon: WebMCPIcon, color: 'bg-cyan-700' },
+  auth: { label: 'AUTH', icon: AuthBadgeIcon, color: 'bg-rose-600' },
+  trigger: { label: 'TRIGGER', icon: TriggerBadgeIcon, color: 'bg-purple-600' },
+  ui: { label: 'CLIENT UI', icon: UIBadgeIcon, color: 'bg-slate-700' },
 };
 
 interface StickyNoteProps {

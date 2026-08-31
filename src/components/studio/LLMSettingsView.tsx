@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { LLMConfig, getLLMConfig, saveLLMConfig } from '@/lib/llm-client';
 import { Key, Sparkles, Check, Info } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
+import { OpenAIIcon, GeminiIcon, AnthropicIcon, WebMCPIcon } from '@/components/ui/BrandIcons';
 
 export function LLMSettingsView() {
   const [provider, setProvider] = useState<LLMConfig['provider']>('smart_mock');
@@ -47,25 +48,31 @@ export function LLMSettingsView() {
         </label>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { id: 'smart_mock', label: 'Built-in Smart AI', desc: 'Zero setup / instant' },
-            { id: 'openai', label: 'OpenAI', desc: 'GPT-4o mini' },
-            { id: 'gemini', label: 'Google Gemini', desc: '1.5 Flash' },
-            { id: 'anthropic', label: 'Anthropic', desc: 'Claude 3.5 Sonnet' },
-          ].map(p => (
-            <button
-              type="button"
-              key={p.id}
-              onClick={() => setProvider(p.id as any)}
-              className={`p-2 rounded-xl text-left border transition-all ${
-                provider === p.id
-                  ? 'border-[#E24E1B] bg-[#FFD8C7]/30 ring-1 ring-[#E24E1B]'
-                  : 'border-[#DCD4C2] bg-[#FFFDF6] hover:bg-[#F4EFE4]'
-              }`}
-            >
-              <div className="font-bold text-xs text-[#1D1A16]">{p.label}</div>
-              <div className="text-[10px] text-[#6B6353]">{p.desc}</div>
-            </button>
-          ))}
+            { id: 'smart_mock', label: 'Smart Heuristic', desc: 'Zero setup / instant', icon: WebMCPIcon },
+            { id: 'openai', label: 'OpenAI', desc: 'GPT-4o mini', icon: OpenAIIcon },
+            { id: 'gemini', label: 'Google Gemini', desc: '2.0 Flash', icon: GeminiIcon },
+            { id: 'anthropic', label: 'Anthropic', desc: 'Claude 3.5', icon: AnthropicIcon },
+          ].map(p => {
+            const Icon = p.icon;
+            return (
+              <button
+                type="button"
+                key={p.id}
+                onClick={() => setProvider(p.id as any)}
+                className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                  provider === p.id
+                    ? 'border-[#E24E1B] bg-[#FFD8C7]/30 ring-1 ring-[#E24E1B]'
+                    : 'border-[#DCD4C2] bg-[#FFFDF6] hover:bg-[#F4EFE4]'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Icon size={14} className={provider === p.id ? 'text-[#E24E1B]' : 'text-[#6B6353]'} />
+                  <span className="font-bold text-xs text-[#1D1A16]">{p.label}</span>
+                </div>
+                <div className="text-[10px] text-[#6B6353] mt-0.5">{p.desc}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

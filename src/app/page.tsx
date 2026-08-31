@@ -24,6 +24,13 @@ import {
   User,
   GitBranch,
 } from 'lucide-react';
+import {
+  WebMCPIcon,
+  OpenAIIcon,
+  ChromeIcon,
+  GeminiIcon,
+  AnthropicIcon,
+} from '@/components/ui/BrandIcons';
 
 function LandingPageContent() {
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
