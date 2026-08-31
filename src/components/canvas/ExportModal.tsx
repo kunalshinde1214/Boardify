@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { CanvasNode, CanvasEdge } from '@/lib/types';
 import { generateMarkdownExport, generateMermaidExport, getBoundingBox } from '@/lib/layouts';
-import { X, Download, Copy, Check, FileText, Code2, Network, Image as ImageIcon, Printer, Sparkles } from 'lucide-react';
+import { X, Download, Copy, Check, FileText, Code2, Network, Image as ImageIcon, FileSpreadsheet, Sparkles, FileDown } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
+import { toPng } from 'html-to-image';
+import { jsPDF } from 'jspdf';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -20,22 +22,47 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
   const [isRenderingImage, setIsRenderingImage] = useState(false);
   const { showToast } = useToast();
 
-  // Generate canvas PNG preview
+  // Capture canvas DOM directly using html-to-image
   useEffect(() => {
     if (!isOpen || !nodes.length) return;
 
     setIsRenderingImage(true);
-    const timer = setTimeout(() => {
+
+    const captureCanvas = async () => {
       try {
-        const url = renderBoardToCanvasDataUrl(nodes, edges);
-        setPreviewImageUrl(url);
+        const viewportEl = document.getElementById('boardify-canvas-viewport');
+        if (viewportEl) {
+          // Filter out temporary overlays
+          const dataUrl = await toPng(viewportEl, {
+            quality: 0.98,
+            pixelRatio: 2,
+            backgroundColor: '#F4EFE4',
+            filter: node => {
+              // Ignore agent studio drawer and fixed buttons if nested
+              if ((node as HTMLElement)?.classList?.contains?.('minimap-container')) return false;
+              return true;
+            },
+          });
+          setPreviewImageUrl(dataUrl);
+          setIsRenderingImage(false);
+          return;
+        }
       } catch (err) {
-        console.warn('Failed to render canvas preview:', err);
+        console.warn('html-to-image DOM capture failed, falling back to high-res canvas renderer:', err);
+      }
+
+      // Fallback: high-res vector canvas rendering
+      try {
+        const fallbackUrl = renderBoardToCanvasDataUrl(nodes, edges);
+        setPreviewImageUrl(fallbackUrl);
+      } catch (fallbackErr) {
+        console.warn('Canvas rendering error:', fallbackErr);
       } finally {
         setIsRenderingImage(false);
       }
-    }, 50);
+    };
 
+    const timer = setTimeout(captureCanvas, 100);
     return () => clearTimeout(timer);
   }, [isOpen, nodes, edges]);
 
@@ -52,7 +79,6 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
 
   const handleCopy = () => {
     if (activeTab === 'image' && previewImageUrl) {
-      // Copy image blob to clipboard if supported
       fetch(previewImageUrl)
         .then(res => res.blob())
         .then(blob => {
@@ -63,7 +89,7 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
         })
         .catch(() => {
           navigator.clipboard.writeText(previewImageUrl);
-          showToast('Copied Image data to clipboard', 'ok');
+          showToast('Copied Image data URL', 'ok');
         });
       return;
     }
@@ -76,7 +102,10 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
 
   const handleDownload = () => {
     if (activeTab === 'image') {
-      if (!previewImageUrl) return;
+      if (!previewImageUrl) {
+        showToast('Image still rendering, please wait...', 'info');
+        return;
+      }
       const a = document.createElement('a');
       a.href = previewImageUrl;
       a.download = `boardify-canvas-${Date.now()}.png`;
@@ -86,9 +115,56 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
     }
 
     if (activeTab === 'pdf') {
-      if (!previewImageUrl) return;
-      printCanvasAsPDF(previewImageUrl, 'Boardify Strategy Canvas');
-      showToast('Opening print dialog for PDF export...', 'info');
+      if (!previewImageUrl) {
+        showToast('Preparing PDF snapshot...', 'info');
+        return;
+      }
+
+      try {
+        const doc = new jsPDF({
+          orientation: 'landscape',
+          unit: 'pt',
+          format: 'a4',
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        // Header
+        doc.setFillColor(244, 239, 228);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor(29, 26, 22);
+        doc.text('Boardify Strategy Canvas', 30, 32);
+
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(107, 99, 83);
+        doc.text(`Exported · ${new Date().toLocaleString()} · ${nodes.length} notes · ${edges.length} links`, 30, 48);
+
+        // Add Image
+        const imgProps = doc.getImageProperties(previewImageUrl);
+        const ratio = imgProps.width / imgProps.height;
+        let printW = pageWidth - 60;
+        let printH = printW / ratio;
+
+        if (printH > pageHeight - 80) {
+          printH = pageHeight - 80;
+          printW = printH * ratio;
+        }
+
+        const x = (pageWidth - printW) / 2;
+        const y = 60 + (pageHeight - 80 - printH) / 2;
+
+        doc.addImage(previewImageUrl, 'PNG', x, y, printW, printH);
+        doc.save(`boardify-canvas-${Date.now()}.pdf`);
+        showToast('Downloaded PDF Document!', 'ok');
+      } catch (err) {
+        console.warn('jsPDF generation failed, opening print dialog fallback:', err);
+        printCanvasFallback(previewImageUrl, 'Boardify Canvas Export');
+      }
       return;
     }
 
@@ -114,7 +190,7 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
               Export Canvas
             </h2>
             <p className="text-xs text-[#6B6353]">
-              Download high-resolution visuals or structured documents powered by WebMCP.
+              Download high-fidelity visuals or structured artifacts powered by WebMCP.
             </p>
           </div>
           <button
@@ -129,10 +205,10 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
         <div className="flex items-center gap-1.5 px-6 pt-4 overflow-x-auto">
           {[
             { id: 'image', label: 'PNG Image', icon: ImageIcon },
-            { id: 'pdf', label: 'PDF Document', icon: Printer },
-            { id: 'markdown', label: 'Markdown', icon: FileText },
-            { id: 'mermaid', label: 'Mermaid', icon: Network },
-            { id: 'json', label: 'JSON State', icon: Code2 },
+            { id: 'pdf', label: 'PDF Document', icon: FileDown },
+            { id: 'markdown', label: 'Markdown Outline', icon: FileText },
+            { id: 'mermaid', label: 'Mermaid Chart', icon: Network },
+            { id: 'json', label: 'JSON Backup', icon: Code2 },
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -154,22 +230,22 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
         </div>
 
         {/* Preview box */}
-        <div className="p-6 flex-1 overflow-hidden flex flex-col min-h-[320px]">
+        <div className="p-6 flex-1 overflow-hidden flex flex-col min-h-[340px]">
           {activeTab === 'image' || activeTab === 'pdf' ? (
             <div className="relative flex-1 bg-[#F4EFE4] rounded-xl p-4 border-2 border-[#DCD4C2] flex items-center justify-center overflow-auto max-h-[380px]">
               {isRenderingImage ? (
                 <div className="flex items-center gap-2 text-xs font-bold text-[#6B6353]">
                   <Sparkles className="w-4 h-4 animate-spin text-[#E24E1B]" />
-                  <span>Rendering 2x Retina Snapshot...</span>
+                  <span>Capturing Pixel-Perfect Screen Snapshot...</span>
                 </div>
               ) : previewImageUrl ? (
                 <img
                   src={previewImageUrl}
-                  alt="Boardify Canvas Export Preview"
+                  alt="Boardify Canvas Screen Export"
                   className="max-h-full max-w-full object-contain rounded-lg shadow-md border border-[#1D1A16]/20"
                 />
               ) : (
-                <span className="text-xs text-[#6B6353]">No notes to render</span>
+                <span className="text-xs text-[#6B6353]">No notes on canvas to export</span>
               )}
             </div>
           ) : (
@@ -202,13 +278,13 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
             >
               {activeTab === 'pdf' ? (
                 <>
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print / Save as PDF</span>
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>Download PDF Document</span>
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download {activeTab === 'image' ? 'PNG' : activeTab.toUpperCase()}</span>
+                  <span>Download {activeTab === 'image' ? 'PNG Image' : activeTab.toUpperCase()}</span>
                 </>
               )}
             </button>
@@ -220,7 +296,7 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
 }
 
 /**
- * Renders full canvas graph onto offscreen HTML5 canvas with 2x retina scaling
+ * Fallback vector canvas renderer
  */
 function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): string {
   if (!nodes.length) return '';
@@ -231,7 +307,7 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
   const padding = 80;
   const width = Math.max(900, bb.width + padding * 2);
   const height = Math.max(600, bb.height + padding * 2);
-  const dpr = 2; // Retina scale
+  const dpr = 2;
 
   const canvas = document.createElement('canvas');
   canvas.width = width * dpr;
@@ -241,11 +317,9 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
 
   ctx.scale(dpr, dpr);
 
-  // 1. Draw warm paper background
   ctx.fillStyle = '#F4EFE4';
   ctx.fillRect(0, 0, width, height);
 
-  // 2. Draw dot grid
   ctx.fillStyle = 'rgba(29, 26, 22, 0.12)';
   const dotSpacing = 24;
   for (let x = 0; x < width; x += dotSpacing) {
@@ -256,14 +330,11 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     }
   }
 
-  // Offset origin relative to bounding box
   const offsetX = padding - bb.minX;
   const offsetY = padding - bb.minY;
-
-  // Node map
   const nodeMap = new Map<string, CanvasNode>(nodes.map(n => [n.id, n]));
 
-  // 3. Draw connection wires
+  // Draw wires
   edges.forEach(edge => {
     const src = nodeMap.get(edge.from);
     const tgt = nodeMap.get(edge.to);
@@ -275,20 +346,13 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     const ty = tgt.y + 70 + offsetY;
 
     const dx = Math.abs(tx - sx) * 0.5;
-    const cp1x = sx + Math.max(40, dx);
-    const cp1y = sy;
-    const cp2x = tx - Math.max(40, dx);
-    const cp2y = ty;
-
-    // Draw curve
     ctx.strokeStyle = '#57503F';
     ctx.lineWidth = 2.4;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tx, ty);
+    ctx.bezierCurveTo(sx + Math.max(40, dx), sy, tx - Math.max(40, dx), ty, tx, ty);
     ctx.stroke();
 
-    // Draw arrowhead
     const arrowSize = 8;
     ctx.fillStyle = '#57503F';
     ctx.beginPath();
@@ -298,21 +362,17 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     ctx.closePath();
     ctx.fill();
 
-    // Draw label
     if (edge.label) {
       const mx = (sx + tx) / 2;
       const my = (sy + ty) / 2;
       ctx.font = 'bold 10px sans-serif';
       const textMetrics = ctx.measureText(edge.label);
       const bgW = textMetrics.width + 12;
-      const bgH = 18;
-
       ctx.fillStyle = '#FFFDF6';
       ctx.strokeStyle = '#1D1A16';
       ctx.lineWidth = 1;
-      ctx.fillRect(mx - bgW / 2, my - bgH / 2, bgW, bgH);
-      ctx.strokeRect(mx - bgW / 2, my - bgH / 2, bgW, bgH);
-
+      ctx.fillRect(mx - bgW / 2, my - 9, bgW, 18);
+      ctx.strokeRect(mx - bgW / 2, my - 9, bgW, 18);
       ctx.fillStyle = '#1D1A16';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -320,7 +380,6 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     }
   });
 
-  // 4. Draw Sticky Notes
   const COLOR_MAP: Record<string, string> = {
     butter: '#FFE9A8',
     sage: '#DCEBC8',
@@ -336,20 +395,16 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     const nw = node.width || 230;
     const nh = 140;
 
-    // Note shadow
     ctx.fillStyle = 'rgba(29, 26, 22, 0.14)';
     ctx.fillRect(nx + 3, ny + 4, nw, nh);
 
-    // Note background
     ctx.fillStyle = COLOR_MAP[node.color] || '#FFE9A8';
     ctx.fillRect(nx, ny, nw, nh);
 
-    // Border
     ctx.strokeStyle = '#1D1A16';
     ctx.lineWidth = 1.2;
     ctx.strokeRect(nx, ny, nw, nh);
 
-    // Author Tag
     const tag = node.author === 'agent' ? 'AGENT' : 'YOU';
     ctx.fillStyle = node.author === 'agent' ? '#E24E1B' : '#1D1A16';
     ctx.fillRect(nx + 10, ny - 8, 44, 14);
@@ -359,7 +414,6 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     ctx.textBaseline = 'middle';
     ctx.fillText(tag, nx + 32, ny - 1);
 
-    // Title
     ctx.fillStyle = '#1D1A16';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'left';
@@ -367,7 +421,6 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     const titleText = node.title.length > 26 ? node.title.slice(0, 24) + '…' : node.title;
     ctx.fillText(titleText, nx + 12, ny + 16);
 
-    // Divider
     ctx.strokeStyle = 'rgba(29, 26, 22, 0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -375,7 +428,6 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     ctx.lineTo(nx + nw - 12, ny + 34);
     ctx.stroke();
 
-    // Body text
     ctx.fillStyle = '#403A2F';
     ctx.font = '10px sans-serif';
     const bodyWords = (node.body || '').split('\n');
@@ -387,7 +439,6 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
     });
   });
 
-  // 5. Watermark Footer
   ctx.fillStyle = '#6B6353';
   ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'right';
@@ -397,33 +448,16 @@ function renderBoardToCanvasDataUrl(nodes: CanvasNode[], edges: CanvasEdge[]): s
   return canvas.toDataURL('image/png');
 }
 
-/**
- * Triggers clean print-to-PDF window
- */
-function printCanvasAsPDF(imageDataUrl: string, title: string): void {
+function printCanvasFallback(imageDataUrl: string, title: string): void {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
   printWindow.document.write(`
     <!DOCTYPE html>
     <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          @page { size: landscape; margin: 15mm; }
-          body { margin: 0; padding: 20px; background: #F4EFE4; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; }
-          img { max-width: 100%; height: auto; border: 2px solid #1D1A16; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
-          .header { margin-bottom: 16px; text-align: center; }
-          h1 { margin: 0; font-size: 24px; color: #1D1A16; }
-          p { margin: 6px 0 0; font-size: 11px; color: #6B6353; font-family: monospace; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>${title}</h1>
-          <p>Generated by Boardify WebMCP Collaborative Whiteboard · ${new Date().toLocaleString()}</p>
-        </div>
-        <img src="${imageDataUrl}" onload="window.print();" />
+      <head><title>${title}</title></head>
+      <body style="margin:0;padding:20px;background:#F4EFE4;display:flex;justify-content:center;">
+        <img src="${imageDataUrl}" onload="window.print();" style="max-width:100%;border:2px solid #1D1A16;border-radius:12px;" />
       </body>
     </html>
   `);

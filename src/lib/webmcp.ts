@@ -9,7 +9,9 @@ import {
   getCentroid,
   generateMarkdownExport,
   generateMermaidExport,
+  analyzeBoardHealth,
 } from './layouts';
+import { BOARD_TEMPLATES } from './templates-data';
 
 export interface WebMCPContextActions {
   getNodes: () => CanvasNode[];
@@ -523,6 +525,225 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
         board_id: newBoardId,
         title,
         message: `Created new whiteboard canvas: "${title}"`,
+      };
+    },
+  };
+
+  // 14. get_board_summary (Context & Semantic Overview)
+  tools.get_board_summary = {
+    name: 'get_board_summary',
+    description: 'Returns a high-level semantic synopsis of the canvas: total node counts, human vs agent ratio, health/coherence score, orphan node list, central anchor bottlenecks, and dominant themes.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+    run: () => {
+      const nodes = actions.getNodes();
+      const edges = actions.getEdges();
+      const health = analyzeBoardHealth(nodes, edges);
+
+      const humanNodes = nodes.filter(n => n.author === 'human');
+      const agentNodes = nodes.filter(n => n.author === 'agent');
+
+      return {
+        success: true,
+        summary: `Canvas contains ${nodes.length} notes and ${edges.length} connections with ${health.score}% coherence score.`,
+        stats: {
+          total_notes: nodes.length,
+          total_links: edges.length,
+          human_notes: humanNodes.length,
+          agent_notes: agentNodes.length,
+          coherence_score: health.score,
+          coherence_grade: health.grade,
+        },
+        orphan_notes: health.orphanNodes.map(n => ({ id: n.id, title: n.title })),
+        central_anchors: health.bottleneckNodes.map(n => ({ id: n.id, title: n.title })),
+        insights: health.insights,
+        titles_overview: nodes.map(n => n.title),
+      };
+    },
+  };
+
+  // 15. get_node_context (Local 1-hop & 2-hop Neighborhood)
+  tools.get_node_context = {
+    name: 'get_node_context',
+    description: 'Inspect the deep local graph context around a specific note: incoming parent notes, outgoing child notes, relationship labels, and 2-hop neighbors.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        node_id: { type: 'string', description: 'ID of the node to inspect' },
+      },
+      required: ['node_id'],
+    },
+    run: input => {
+      const id = String(input.node_id || '').trim();
+      if (!id) return { success: false, error: 'node_id is required' };
+
+      const nodes = actions.getNodes();
+      const edges = actions.getEdges();
+      const target = nodes.find(n => n.id === id);
+
+      if (!target) return { success: false, error: `Node ${id} not found` };
+
+      // Incoming & Outgoing edges
+      const incomingEdges = edges.filter(e => e.to === id);
+      const outgoingEdges = edges.filter(e => e.from === id);
+
+      const incomingNodes = incomingEdges.map(e => ({
+        edge_id: e.id,
+        relationship: e.label || 'connects to',
+        source_node: nodes.find(n => n.id === e.from),
+      }));
+
+      const outgoingNodes = outgoingEdges.map(e => ({
+        edge_id: e.id,
+        relationship: e.label || 'leads to',
+        target_node: nodes.find(n => n.id === e.to),
+      }));
+
+      return {
+        success: true,
+        target_node: {
+          id: target.id,
+          title: target.title,
+          body: target.body,
+          color: target.color,
+          author: target.author,
+          nodeType: target.nodeType || 'default',
+        },
+        incoming_context: incomingNodes,
+        outgoing_context: outgoingNodes,
+        total_connections: incomingEdges.length + outgoingEdges.length,
+      };
+    },
+  };
+
+  // 16. query_canvas_semantic (Semantic / Keyword Subgraph Search)
+  tools.query_canvas_semantic = {
+    name: 'query_canvas_semantic',
+    description: 'Perform keyword/concept search across canvas notes and return matching nodes along with their immediate connected subgraphs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Keyword or concept phrase to search' },
+      },
+      required: ['query'],
+    },
+    run: input => {
+      const q = String(input.query || '').toLowerCase().trim();
+      if (!q) return { success: false, error: 'query is required' };
+
+      const nodes = actions.getNodes();
+      const edges = actions.getEdges();
+
+      const matchedNodes = nodes.filter(
+        n => n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q)
+      );
+
+      const matchedIds = new Set(matchedNodes.map(n => n.id));
+      const relatedEdges = edges.filter(e => matchedIds.has(e.from) || matchedIds.has(e.to));
+
+      return {
+        success: true,
+        query: q,
+        match_count: matchedNodes.length,
+        nodes: matchedNodes.map(n => ({
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          color: n.color,
+          author: n.author,
+        })),
+        connected_links: relatedEdges.map(e => ({
+          id: e.id,
+          from: e.from,
+          to: e.to,
+          label: e.label || '',
+        })),
+      };
+    },
+  };
+
+  // 17. get_templates_list (Template Directory)
+  tools.get_templates_list = {
+    name: 'get_templates_list',
+    description: 'List all pre-built strategy, engineering, product, and launch templates available in Boardify with their IDs and descriptions.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+    run: () => {
+      return {
+        success: true,
+        template_count: BOARD_TEMPLATES.length,
+        templates: BOARD_TEMPLATES.map(t => ({
+          id: t.id,
+          title: t.title,
+          category: t.category,
+          badge: t.badge,
+          description: t.description,
+          node_count: t.nodes.length,
+          suggested_prompt: t.suggestedPrompt,
+        })),
+      };
+    },
+  };
+
+  // 18. apply_template (Instantiate Pre-Built Template)
+  tools.apply_template = {
+    name: 'apply_template',
+    description: 'Load and instantiate a complete pre-built strategy or engineering template directly onto the whiteboard canvas.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        template_id: { type: 'string', description: 'ID of the template to apply (e.g. "startup-gtm", "yc-pitch-deck", "multi-agent-swarm")' },
+      },
+      required: ['template_id'],
+    },
+    run: input => {
+      const templateId = String(input.template_id || '').trim();
+      const template = BOARD_TEMPLATES.find(t => t.id === templateId);
+
+      if (!template) {
+        return {
+          success: false,
+          error: `Template "${templateId}" not found. Call get_templates_list to see available templates.`,
+        };
+      }
+
+      const createdNodes: CanvasNode[] = [];
+      template.nodes.forEach(n => {
+        const created = actions.addNode({
+          title: n.title,
+          body: n.body,
+          x: n.x,
+          y: n.y,
+          width: n.width || 230,
+          color: n.color || 'butter',
+          author: n.author || 'agent',
+          nodeType: n.nodeType || 'default',
+        });
+        createdNodes.push(created);
+      });
+
+      if (template.edges) {
+        template.edges.forEach(e => {
+          const src = createdNodes[e.sourceIndex];
+          const tgt = createdNodes[e.targetIndex];
+          if (src && tgt) {
+            actions.connectNodes(src.id, tgt.id, e.label);
+          }
+        });
+      }
+
+      actions.animateLayout(calculateSmartFlowTargets(actions.getNodes(), actions.getEdges()));
+
+      return {
+        success: true,
+        template_id: template.id,
+        template_title: template.title,
+        notes_created: createdNodes.length,
+        links_created: template.edges?.length || 0,
       };
     },
   };

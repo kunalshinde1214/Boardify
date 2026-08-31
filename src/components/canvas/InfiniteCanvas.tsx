@@ -233,6 +233,7 @@ export function InfiniteCanvas({
 
   return (
     <div
+      id="boardify-canvas-viewport"
       ref={containerRef}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
