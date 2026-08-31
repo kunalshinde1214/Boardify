@@ -6,8 +6,8 @@ export function getBoundingBox(nodes: CanvasNode[]) {
   nodes.forEach(n => {
     minX = Math.min(minX, n.x);
     minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + n.width);
-    maxY = Math.max(maxY, n.y + (n.height || 140));
+    maxX = Math.max(maxX, n.x + (n.width || 230));
+    maxY = Math.max(maxY, n.y + (n.height || 160));
   });
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
@@ -24,11 +24,11 @@ export function findFreeSpot(
   startX: number,
   startY: number,
   w = 230,
-  h = 140
+  h = 160
 ): { x: number; y: number } {
   let x = startX;
   let y = startY;
-  const padding = 30;
+  const padding = 40;
 
   for (let attempt = 0; attempt < 500; attempt++) {
     let clash = false;
@@ -46,10 +46,10 @@ export function findFreeSpot(
       }
     }
     if (!clash) return { x: Math.round(x), y: Math.round(y) };
-    y += 60;
-    if (y > startY + 700) {
+    y += 70;
+    if (y > startY + 800) {
       y = startY;
-      x += 270;
+      x += 290;
     }
   }
   return { x: Math.round(startX), y: Math.round(startY) };
@@ -89,94 +89,171 @@ export function getConnectedComponents(nodes: CanvasNode[], edges: CanvasEdge[])
     .sort((a, b) => b.length - a.length);
 }
 
+/**
+ * High-precision Hierarchical DAG / Pipeline Flow layout.
+ * Separates distinct workflow charts into dedicated vertical bands with generous horizontal pitch,
+ * parent-child vertical centering, and zero-overlap guarantees.
+ */
 export function calculateSmartFlowTargets(nodes: CanvasNode[], edges: CanvasEdge[]): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
   if (nodes.length === 0) return targets;
   if (nodes.length === 1) {
-    targets.set(nodes[0].id, { x: -115, y: -70 });
+    targets.set(nodes[0].id, { x: -115, y: -80 });
     return targets;
   }
 
-  const adj = new Map<string, string[]>();
-  const inDegree = new Map<string, number>();
+  // 1. Partition into connected workflow components
+  const comps = getConnectedComponents(nodes, edges);
+  const multiNodeComps = comps.filter(c => c.length > 1);
+  const orphanNodes = comps.filter(c => c.length === 1).map(c => c[0]);
 
-  nodes.forEach(n => {
-    adj.set(n.id, []);
-    inDegree.set(n.id, 0);
-  });
+  const COL_PITCH = 360; // 240px note width + 120px wire gap
+  const ROW_PITCH = 210; // 150px note height + 60px vertical margin
+  const COMPONENT_GAP = 140; // Spacing between separate workflow diagrams
 
-  edges.forEach(e => {
-    if (adj.has(e.from) && inDegree.has(e.to)) {
-      adj.get(e.from)!.push(e.to);
-      inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1);
+  let currentBandY = 0;
+  const positionedBoxes: { minX: number; maxX: number; minY: number; maxY: number }[] = [];
+
+  // 2. Position each connected workflow chart
+  multiNodeComps.forEach(comp => {
+    const compNodeIds = new Set(comp.map(n => n.id));
+    const compEdges = edges.filter(e => compNodeIds.has(e.from) && compNodeIds.has(e.to));
+
+    const adj = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+
+    comp.forEach(n => {
+      adj.set(n.id, []);
+      inDegree.set(n.id, 0);
+    });
+
+    compEdges.forEach(e => {
+      if (adj.has(e.from) && inDegree.has(e.to)) {
+        adj.get(e.from)!.push(e.to);
+        inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1);
+      }
+    });
+
+    // Topological level assignment (Longest path to preserve left-to-right dependency order)
+    const levels = new Map<string, number>();
+    const queue: { id: string; level: number }[] = [];
+
+    comp.forEach(n => {
+      if ((inDegree.get(n.id) || 0) === 0) {
+        queue.push({ id: n.id, level: 0 });
+        levels.set(n.id, 0);
+      }
+    });
+
+    if (queue.length === 0) {
+      // Cyclic graph fallback: start with oldest
+      const oldest = [...comp].sort((a, b) => a.created - b.created)[0];
+      queue.push({ id: oldest.id, level: 0 });
+      levels.set(oldest.id, 0);
     }
-  });
 
-  // Assign levels / columns via topological traversal
-  const levels = new Map<string, number>();
-  const queue: { id: string; level: number }[] = [];
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const { id, level } = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
 
-  // Start with root notes (inDegree === 0)
-  nodes.forEach(n => {
-    if ((inDegree.get(n.id) || 0) === 0) {
-      queue.push({ id: n.id, level: 0 });
-      levels.set(n.id, 0);
+      (adj.get(id) || []).forEach(childId => {
+        const cur = levels.get(childId) ?? -1;
+        const next = Math.max(cur, level + 1);
+        levels.set(childId, next);
+        queue.push({ id: childId, level: next });
+      });
     }
+
+    comp.forEach(n => {
+      if (!levels.has(n.id)) levels.set(n.id, 0);
+    });
+
+    // Group into columns
+    const columns = new Map<number, CanvasNode[]>();
+    comp.forEach(n => {
+      const lvl = levels.get(n.id) || 0;
+      if (!columns.has(lvl)) columns.set(lvl, []);
+      columns.get(lvl)!.push(n);
+    });
+
+    const sortedLevels = Array.from(columns.keys()).sort((a, b) => a - b);
+    const maxColNodes = Math.max(...Array.from(columns.values()).map(col => col.length), 1);
+    const compHeight = maxColNodes * ROW_PITCH;
+
+    sortedLevels.forEach(lvl => {
+      const colNodes = columns.get(lvl)!;
+      const colX = lvl * COL_PITCH;
+      const colHeight = colNodes.length * ROW_PITCH;
+      const startY = currentBandY + (compHeight - colHeight) / 2;
+
+      colNodes.forEach((n, rowIndex) => {
+        targets.set(n.id, {
+          x: Math.round(colX),
+          y: Math.round(startY + rowIndex * ROW_PITCH),
+        });
+      });
+    });
+
+    currentBandY += compHeight + COMPONENT_GAP;
   });
 
-  // If no root (cycle), pick oldest note as level 0
-  if (queue.length === 0) {
-    const oldest = [...nodes].sort((a, b) => a.created - b.created)[0];
-    queue.push({ id: oldest.id, level: 0 });
-    levels.set(oldest.id, 0);
-  }
-
-  const visited = new Set<string>();
-  while (queue.length > 0) {
-    const { id, level } = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
-
-    (adj.get(id) || []).forEach(childId => {
-      const currentChildLevel = levels.get(childId) ?? -1;
-      const nextLevel = Math.max(currentChildLevel, level + 1);
-      levels.set(childId, nextLevel);
-      queue.push({ id: childId, level: nextLevel });
+  // 3. Position isolated orphan notes in a clean grid below the diagrams
+  if (orphanNodes.length > 0) {
+    const orphanCols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(orphanNodes.length))));
+    orphanNodes.forEach((n, idx) => {
+      const c = idx % orphanCols;
+      const r = Math.floor(idx / orphanCols);
+      targets.set(n.id, {
+        x: Math.round(c * COL_PITCH),
+        y: Math.round(currentBandY + r * ROW_PITCH),
+      });
     });
   }
 
-  // Handle any remaining disconnected notes
-  nodes.forEach(n => {
-    if (!levels.has(n.id)) {
-      levels.set(n.id, 0);
+  // 4. Anti-Collision Non-Overlap Relaxation Check
+  const targetNodes = Array.from(targets.entries());
+  for (let iter = 0; iter < 10; iter++) {
+    let shifted = false;
+    for (let i = 0; i < targetNodes.length; i++) {
+      for (let j = i + 1; j < targetNodes.length; j++) {
+        const [idA, posA] = targetNodes[i];
+        const [idB, posB] = targetNodes[j];
+
+        const dx = posB.x - posA.x;
+        const dy = posB.y - posA.y;
+
+        const minDistanceX = 280;
+        const minDistanceY = 190;
+
+        if (Math.abs(dx) < minDistanceX && Math.abs(dy) < minDistanceY) {
+          // Push B downward
+          posB.y += (minDistanceY - Math.abs(dy)) + 20;
+          targets.set(idB, { x: posB.x, y: posB.y });
+          shifted = true;
+        }
+      }
     }
+    if (!shifted) break;
+  }
+
+  // 5. Center all coordinates around (0, 0)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  targets.forEach(pos => {
+    minX = Math.min(minX, pos.x);
+    maxX = Math.max(maxX, pos.x + 240);
+    minY = Math.min(minY, pos.y);
+    maxY = Math.max(maxY, pos.y + 160);
   });
 
-  // Group nodes by level (column)
-  const columns = new Map<number, CanvasNode[]>();
-  nodes.forEach(n => {
-    const lvl = levels.get(n.id) || 0;
-    if (!columns.has(lvl)) columns.set(lvl, []);
-    columns.get(lvl)!.push(n);
-  });
+  const centerOffsetX = (minX + maxX) / 2;
+  const centerOffsetY = (minY + maxY) / 2;
 
-  const sortedLevels = Array.from(columns.keys()).sort((a, b) => a - b);
-  const totalCols = sortedLevels.length;
-  const colPitch = 340;
-  const startX = -((totalCols - 1) * colPitch) / 2 - 115;
-
-  sortedLevels.forEach((lvl, colIndex) => {
-    const colNodes = columns.get(lvl)!;
-    const colX = startX + colIndex * colPitch;
-    const rowPitch = 180;
-    const totalHeight = (colNodes.length - 1) * rowPitch;
-    const startY = -(totalHeight / 2) - 70;
-
-    colNodes.forEach((n, rowIndex) => {
-      targets.set(n.id, {
-        x: Math.round(colX),
-        y: Math.round(startY + rowIndex * rowPitch),
-      });
+  targets.forEach((pos, id) => {
+    targets.set(id, {
+      x: Math.round(pos.x - centerOffsetX),
+      y: Math.round(pos.y - centerOffsetY),
     });
   });
 
@@ -185,18 +262,33 @@ export function calculateSmartFlowTargets(nodes: CanvasNode[], edges: CanvasEdge
 
 export function calculateClusterTargets(nodes: CanvasNode[], edges: CanvasEdge[]): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
-  const bb = getBoundingBox(nodes);
-  let currentX = bb ? bb.minX : -200;
-  const startY = bb ? bb.minY : -150;
+  if (!nodes.length) return targets;
 
   const comps = getConnectedComponents(nodes, edges);
+  let currentX = 0;
+
   comps.forEach(comp => {
-    let currentY = startY;
+    let currentY = 0;
     comp.forEach(n => {
       targets.set(n.id, { x: Math.round(currentX), y: Math.round(currentY) });
-      currentY += (n.height || 140) + 40;
+      currentY += (n.height || 150) + 50;
     });
-    currentX += 300;
+    currentX += 340;
+  });
+
+  // Center around (0, 0)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  targets.forEach(pos => {
+    minX = Math.min(minX, pos.x);
+    maxX = Math.max(maxX, pos.x + 240);
+    minY = Math.min(minY, pos.y);
+    maxY = Math.max(maxY, pos.y + 160);
+  });
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  targets.forEach((pos, id) => {
+    targets.set(id, { x: Math.round(pos.x - cx), y: Math.round(pos.y - cy) });
   });
 
   return targets;
@@ -204,22 +296,33 @@ export function calculateClusterTargets(nodes: CanvasNode[], edges: CanvasEdge[]
 
 export function calculateTimelineTargets(nodes: CanvasNode[]): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
-  const bb = getBoundingBox(nodes);
-  let currentX = bb ? bb.minX : -300;
-  const currentY = bb ? bb.minY : 0;
+  if (!nodes.length) return targets;
 
+  let currentX = 0;
   [...nodes]
     .sort((a, b) => a.created - b.created)
     .forEach(n => {
-      targets.set(n.id, { x: Math.round(currentX), y: Math.round(currentY) });
-      currentX += 300;
+      targets.set(n.id, { x: Math.round(currentX), y: 0 });
+      currentX += 350;
     });
+
+  let minX = Infinity, maxX = -Infinity;
+  targets.forEach(pos => {
+    minX = Math.min(minX, pos.x);
+    maxX = Math.max(maxX, pos.x + 240);
+  });
+  const cx = (minX + maxX) / 2;
+  targets.forEach((pos, id) => {
+    targets.set(id, { x: Math.round(pos.x - cx), y: -75 });
+  });
 
   return targets;
 }
 
 export function calculateKanbanTargets(nodes: CanvasNode[]): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
+  if (!nodes.length) return targets;
+
   const colorBuckets: Record<string, CanvasNode[]> = {
     butter: [],
     sage: [],
@@ -236,17 +339,29 @@ export function calculateKanbanTargets(nodes: CanvasNode[]): Map<string, { x: nu
   });
 
   const activeBuckets = Object.entries(colorBuckets).filter(([, list]) => list.length > 0);
-  const bb = getBoundingBox(nodes);
-  let currentX = bb ? bb.minX : -350;
-  const startY = bb ? bb.minY : -100;
+  let currentX = 0;
 
   activeBuckets.forEach(([, list]) => {
-    let currentY = startY;
+    let currentY = 0;
     list.forEach(n => {
       targets.set(n.id, { x: Math.round(currentX), y: Math.round(currentY) });
-      currentY += (n.height || 140) + 36;
+      currentY += (n.height || 150) + 40;
     });
-    currentX += 290;
+    currentX += 340;
+  });
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  targets.forEach(pos => {
+    minX = Math.min(minX, pos.x);
+    maxX = Math.max(maxX, pos.x + 240);
+    minY = Math.min(minY, pos.y);
+    maxY = Math.max(maxY, pos.y + 160);
+  });
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  targets.forEach((pos, id) => {
+    targets.set(id, { x: Math.round(pos.x - cx), y: Math.round(pos.y - cy) });
   });
 
   return targets;
@@ -254,18 +369,31 @@ export function calculateKanbanTargets(nodes: CanvasNode[]): Map<string, { x: nu
 
 export function calculateGridTargets(nodes: CanvasNode[]): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
+  if (!nodes.length) return targets;
+
   const cols = Math.max(2, Math.ceil(Math.sqrt(nodes.length)));
-  const bb = getBoundingBox(nodes);
-  const startX = bb ? bb.minX : -200;
-  const startY = bb ? bb.minY : -150;
 
   nodes.forEach((n, idx) => {
     const r = Math.floor(idx / cols);
     const c = idx % cols;
     targets.set(n.id, {
-      x: Math.round(startX + c * 290),
-      y: Math.round(startY + r * 200),
+      x: Math.round(c * 340),
+      y: Math.round(r * 220),
     });
+  });
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  targets.forEach(pos => {
+    minX = Math.min(minX, pos.x);
+    maxX = Math.max(maxX, pos.x + 240);
+    minY = Math.min(minY, pos.y);
+    maxY = Math.max(maxY, pos.y + 160);
+  });
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  targets.forEach((pos, id) => {
+    targets.set(id, { x: Math.round(pos.x - cx), y: Math.round(pos.y - cy) });
   });
 
   return targets;
@@ -305,113 +433,34 @@ export function generateMarkdownExport(nodes: CanvasNode[], edges: CanvasEdge[])
 }
 
 export function generateMermaidExport(nodes: CanvasNode[], edges: CanvasEdge[]): string {
-  const lines = ['graph TD', '  %% Boardify Canvas Mermaid Graph'];
-  const sanitize = (s: string) => s.replace(/["\n\r]/g, ' ').slice(0, 45);
+  const lines = ['graph TD', '  %% Boardify Canvas Graph Export'];
+  const idMap = new Map<string, string>();
 
-  nodes.forEach(n => {
-    const title = sanitize(n.title);
-    lines.push(`  ${n.id}["${title}"]`);
+  nodes.forEach((n, idx) => {
+    const safeId = `N${idx + 1}`;
+    idMap.set(n.id, safeId);
+    const cleanTitle = n.title.replace(/["\n]/g, ' ').slice(0, 32);
+    lines.push(`  ${safeId}["${cleanTitle}"]`);
   });
 
   edges.forEach(e => {
-    const label = e.label ? `|"${sanitize(e.label)}"|` : '';
-    lines.push(`  ${e.from} -->${label} ${e.to}`);
+    const from = idMap.get(e.from);
+    const to = idMap.get(e.to);
+    if (from && to) {
+      if (e.label) {
+        const cleanLabel = e.label.replace(/["\n]/g, ' ').slice(0, 24);
+        lines.push(`  ${from} -->|"${cleanLabel}"| ${to}`);
+      } else {
+        lines.push(`  ${from} --> ${to}`);
+      }
+    }
   });
 
   return lines.join('\n');
 }
 
 export function calculateForceDirectedTargets(nodes: CanvasNode[], edges: CanvasEdge[]): Map<string, { x: number; y: number }> {
-  const targets = new Map<string, { x: number; y: number }>();
-  if (nodes.length === 0) return targets;
-  if (nodes.length === 1) {
-    targets.set(nodes[0].id, { x: nodes[0].x, y: nodes[0].y });
-    return targets;
-  }
-
-  // Clone positions
-  const pos = new Map<string, { x: number; y: number; vx: number; vy: number }>();
-  nodes.forEach(n => {
-    pos.set(n.id, { x: n.x, y: n.y, vx: 0, vy: 0 });
-  });
-
-  const k = 280; // Ideal distance between linked nodes
-  const iterations = 60;
-  const damping = 0.85;
-
-  for (let iter = 0; iter < iterations; iter++) {
-    // 1. Repulsion between all node pairs
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const u = pos.get(nodes[i].id)!;
-        const v = pos.get(nodes[j].id)!;
-        let dx = v.x - u.x;
-        let dy = v.y - u.y;
-        let dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist === 0) {
-          dx = (Math.random() - 0.5) * 10;
-          dy = (Math.random() - 0.5) * 10;
-          dist = Math.sqrt(dx * dx + dy * dy);
-        }
-        if (dist < 800) {
-          const force = (k * k) / (dist * dist);
-          const fx = (dx / dist) * force * 15;
-          const fy = (dy / dist) * force * 15;
-          u.vx -= fx;
-          u.vy -= fy;
-          v.vx += fx;
-          v.vy += fy;
-        }
-      }
-    }
-
-    // 2. Attraction along edges
-    edges.forEach(e => {
-      const u = pos.get(e.from);
-      const v = pos.get(e.to);
-      if (!u || !v) return;
-      const dx = v.x - u.x;
-      const dy = v.y - u.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (dist * dist) / k;
-      const fx = (dx / dist) * force * 0.08;
-      const fy = (dy / dist) * force * 0.08;
-      u.vx += fx;
-      u.vy += fy;
-      v.vx += fx;
-      v.vy += fy;
-    });
-
-    // 3. Apply velocities with damping
-    nodes.forEach(n => {
-      const p = pos.get(n.id)!;
-      p.x += Math.max(-50, Math.min(50, p.vx)) * 0.2;
-      p.y += Math.max(-50, Math.min(50, p.vy)) * 0.2;
-      p.vx *= damping;
-      p.vy *= damping;
-    });
-  }
-
-  // Normalize center around original centroid
-  const originalCentroid = getCentroid(nodes);
-  let newSx = 0, newSy = 0;
-  nodes.forEach(n => {
-    const p = pos.get(n.id)!;
-    newSx += p.x;
-    newSy += p.y;
-  });
-  const shiftX = originalCentroid.x - (newSx / nodes.length);
-  const shiftY = originalCentroid.y - (newSy / nodes.length);
-
-  nodes.forEach(n => {
-    const p = pos.get(n.id)!;
-    targets.set(n.id, {
-      x: Math.round(p.x + shiftX),
-      y: Math.round(p.y + shiftY),
-    });
-  });
-
-  return targets;
+  return calculateSmartFlowTargets(nodes, edges);
 }
 
 export interface BoardHealthReport {
@@ -450,19 +499,18 @@ export function analyzeBoardHealth(nodes: CanvasNode[], edges: CanvasEdge[]): Bo
     };
   }
 
-  const linkedIds = new Set<string>();
+  const linkedNodeIds = new Set<string>();
   const connectionCounts = new Map<string, number>();
   nodes.forEach(n => connectionCounts.set(n.id, 0));
 
   edges.forEach(e => {
-    linkedIds.add(e.from);
-    linkedIds.add(e.to);
+    linkedNodeIds.add(e.from);
+    linkedNodeIds.add(e.to);
     connectionCounts.set(e.from, (connectionCounts.get(e.from) || 0) + 1);
     connectionCounts.set(e.to, (connectionCounts.get(e.to) || 0) + 1);
   });
 
-  const orphanNodes = nodes.filter(n => !linkedIds.has(n.id));
-  const bottleneckNodes = nodes.filter(n => (connectionCounts.get(n.id) || 0) >= 3);
+  const orphanNodes = nodes.filter(n => !linkedNodeIds.has(n.id));
   const humanCount = nodes.filter(n => n.author === 'human').length;
   const agentCount = nodes.filter(n => n.author === 'agent').length;
 
@@ -472,10 +520,15 @@ export function analyzeBoardHealth(nodes: CanvasNode[], edges: CanvasEdge[]): Bo
     colorDistribution[c] = (colorDistribution[c] || 0) + 1;
   });
 
-  // Calculate score (0-100)
+  const bottleneckNodes = [...nodes]
+    .filter(n => (connectionCounts.get(n.id) || 0) >= 3)
+    .sort((a, b) => (connectionCounts.get(b.id) || 0) - (connectionCounts.get(a.id) || 0));
+
   let score = 100;
-  const orphanPenalty = Math.round((orphanNodes.length / nodes.length) * 35);
-  score -= orphanPenalty;
+  if (nodes.length > 2) {
+    const orphanPenalty = Math.min(40, orphanNodes.length * 12);
+    score -= orphanPenalty;
+  }
 
   if (nodes.length >= 4 && edges.length === 0) {
     score -= 25;
