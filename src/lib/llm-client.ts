@@ -14,7 +14,11 @@ export interface GeneratedPlan {
     title: string;
     body: string;
     color: NoteColor;
-    nodeType?: 'default' | 'agent' | 'tool' | 'database' | 'api' | 'cloud' | 'auth' | 'trigger' | 'ui';
+    nodeType?: 'default' | 'agent' | 'tool' | 'database' | 'api' | 'cloud' | 'auth' | 'trigger' | 'ui' | 'sign' | 'logo' | 'heading' | 'task';
+    signType?: string;
+    logoType?: string;
+    stamp?: string;
+    tasks?: { text: string; done?: boolean }[];
     suggestedOffset?: { x: number; y: number };
   }[];
   links: {
@@ -48,33 +52,45 @@ export async function generateDynamicPlan(
   config: LLMConfig = getLLMConfig()
 ): Promise<GeneratedPlan> {
   const contextNotes = existingNodes
-    .slice(0, 15)
-    .map(n => `- [${n.id}] "${n.title}": ${n.body}`)
+    .slice(0, 20)
+    .map(n => `- [${n.id}] (${n.nodeType || 'note'}${n.logoType ? `:${n.logoType}` : ''}${n.signType ? `:${n.signType}` : ''}) "${n.title}": ${n.body}`)
     .join('\n');
 
   const systemInstruction = `You are a spatial whiteboard strategy and systems architecture expert for Boardify.
-The user is working on an infinite canvas with sticky notes and directional connection wires.
+The user is working on an infinite canvas with sticky notes, tech/brand logos, status signs, section headers, checklists, and directional connection wires.
+
 Existing board context:
 ${contextNotes || '(Board is empty)'}
 
 User Request: "${prompt}"
 
-Return ONLY a JSON object with this exact structure:
+CRITICAL INSTRUCTIONS:
+1. Exact Text Fidelity: If the user provides specific text or asks to add verbatim content (e.g. "add this text: XYZ"), place their exact text in the "body" field without truncating or losing detail.
+2. Tech Logos: If the request refers to software or infrastructure tools, set nodeType: "logo" and logoType to one of: "netlify", "nextjs", "openai", "claude", "gemini", "react", "aws", "firebase", "supabase", "postgres", "redis", "docker", "github", "stripe", "tailwind", "typescript", "python", "graphql", "kubernetes", "linear", "figma", "slack", "discord".
+3. Road & Status Signs: If the request refers to alerts, milestones, risks, or blockers, set nodeType: "sign" and signType to one of: "warning", "stop", "launch", "goal", "idea", "critical", "success", "construction", "security", "pinned", "loop", "experiment", "bug", "hotfix", "milestone", "cone", "heartbeat", "secret", "compass", "alert", "branch", "database_sync", "coffee", "lock".
+4. Section Headings: For grouping areas or architecture phases, set nodeType: "heading".
+5. Task Checklists: For to-do lists, set nodeType: "task" and include "tasks": [{"text": "item 1", "done": false}, ...].
+
+Return ONLY a JSON object with this structure:
 {
   "summary": "Short 1-sentence description of what was created",
   "nodes": [
     {
-      "title": "Short punchy title (under 5 words)",
-      "body": "Clear actionable description (1-2 sentences)",
+      "title": "Clear punchy title",
+      "body": "Detailed text content or explanation",
       "color": "butter" | "sage" | "coral" | "slate" | "lavender" | "mint",
-      "nodeType": "default" | "agent" | "tool" | "database" | "api" | "cloud" | "auth" | "trigger" | "ui"
+      "nodeType": "default" | "sign" | "logo" | "heading" | "task" | "agent" | "tool" | "database" | "api" | "cloud" | "auth" | "trigger" | "ui",
+      "logoType": "optional tech logo ID",
+      "signType": "optional sign ID",
+      "stamp": "optional stamp (APPROVED | MVP | URGENT | WIP | HIGH IMPACT | SECURITY RISK)",
+      "tasks": [{"text": "action item", "done": false}]
     }
   ],
   "links": [
     {
       "sourceTitle": "Exact title of source note",
       "targetTitle": "Exact title of target note",
-      "label": "1. triggers" | "2. queries" | "3. transforms" | "depends on" | "expands" | "pro" | "con"
+      "label": "triggers" | "depends on" | "queries" | "deploys to" | "reads from" | "leads to"
     }
   ]
 }`;

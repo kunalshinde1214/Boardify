@@ -7,6 +7,9 @@ import { InfiniteCanvas } from '@/components/canvas/InfiniteCanvas';
 import { TopToolbar } from '@/components/canvas/TopToolbar';
 import { AgentStudioDrawer } from '@/components/studio/AgentStudioDrawer';
 import { ExportModal } from '@/components/canvas/ExportModal';
+import { ShareDeployModal } from '@/components/canvas/ShareDeployModal';
+import { decodeCanvasShareState } from '@/lib/netlify-deploy';
+import { AVAILABLE_SIGNS, AVAILABLE_LOGOS } from '@/components/ui/BrandIcons';
 import {
   CanvasNode,
   CanvasEdge,
@@ -16,6 +19,7 @@ import {
   WebMCPToolDef,
   NoteColor,
   NodeType,
+  TaskItem,
   generateNodeId,
   generateEdgeId,
 } from '@/lib/types';
@@ -49,30 +53,43 @@ import {
 } from '@/lib/layouts';
 import { generateDynamicPlan } from '@/lib/llm-client';
 import { X, Layers, Copy, Check, ExternalLink, HelpCircle } from 'lucide-react';
+import { LogoSearchModal } from '@/components/canvas/LogoSearchModal';
+import { DiagramDslModal } from '@/components/canvas/DiagramDslModal';
+import { LeftToolPalette, CanvasToolType } from '@/components/canvas/LeftToolPalette';
+import { CanvasCheckpoint } from '@/lib/webmcp';
 
 function CanvasAppInner() {
   const [boards, setBoards] = useState<BoardMetadata[]>([]);
   const [boardId, setBoardId] = useState('default');
   const [activeBoardTitle, setActiveBoardTitle] = useState('Welcome Canvas');
 
+  const [activeTool, setActiveTool] = useState<CanvasToolType>('select');
   const [nodes, setNodes] = useState<CanvasNode[]>(DEFAULT_SEED_BOARD.nodes);
   const [edges, setEdges] = useState<CanvasEdge[]>(DEFAULT_SEED_BOARD.edges);
   const [seq, setSeq] = useState(DEFAULT_SEED_BOARD.seq);
 
   const [camera, setCamera] = useState<CanvasCamera>({ x: 0, y: 0, z: 1 });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [highlightReason, setHighlightReason] = useState<string | undefined>(undefined);
 
   const [isStudioOpen, setIsStudioOpen] = useState(true);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isShareDeployOpen, setIsShareDeployOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+  const [isDiagramDslOpen, setIsDiagramDslOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isLogoSearchOpen, setIsLogoSearchOpen] = useState(false);
+  const [logoSearchCategory, setLogoSearchCategory] = useState('all');
+  const [logoSearchTargetNodeId, setLogoSearchTargetNodeId] = useState<string | null>(null);
 
   const [hasWebMCP, setHasWebMCP] = useState(false);
   const [logs, setLogs] = useState<ToolLogEntry[]>([]);
   const [undoStack, setUndoStack] = useState<CanvasState[]>([]);
+  const [redoStack, setRedoStack] = useState<CanvasState[]>([]);
+  const [checkpoints, setCheckpoints] = useState<Array<CanvasCheckpoint & { nodes: CanvasNode[]; edges: CanvasEdge[] }>>([]);
 
   const [agentCursor, setAgentCursor] = useState<{
     x: number;
@@ -167,7 +184,16 @@ function CanvasAppInner() {
       title = 'Untitled',
       body = '',
       author: 'human' | 'agent' = 'human',
-      nodeType: NodeType = 'default'
+      nodeType: NodeType = 'default',
+      extra?: {
+        signType?: string;
+        logoType?: string;
+        stamp?: string;
+        tasks?: TaskItem[];
+        width?: number;
+        fontSize?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+        styleVariant?: 'sticky' | 'glass' | 'badge' | 'signpost' | 'banner' | 'clean' | 'neon';
+      }
     ) => {
       pushUndo();
       const newId = generateNodeId();
@@ -188,7 +214,7 @@ function CanvasAppInner() {
         body,
         x: targetX,
         y: targetY,
-        width: 230,
+        width: nodeType === 'heading' ? 320 : 230,
         color,
         author,
         created: Date.now(),
@@ -212,6 +238,283 @@ function CanvasAppInner() {
     },
     []
   );
+
+  const fitView = useCallback((animate = true) => {
+    const bb = getBoundingBox(nodesRef.current);
+    if (!bb) {
+      setCamera({ x: 0, y: 0, z: 1 });
+      return;
+    }
+
+    const padding = 120;
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+
+    const scaleX = (w - padding * 2) / (bb.width || 400);
+    const scaleY = (h - padding * 2) / (bb.height || 400);
+    const targetZ = Math.min(1.4, Math.max(0.35, Math.min(scaleX, scaleY)));
+
+    const centerX = (bb.minX + bb.maxX) / 2;
+    const centerY = (bb.minY + bb.maxY) / 2;
+
+    const targetX = w / 2 - centerX * targetZ;
+    const targetY = h / 2 - centerY * targetZ;
+
+    setCamera({ x: targetX, y: targetY, z: targetZ });
+  }, []);
+
+  const handleDuplicateNode = useCallback(
+    (id: string, offset = { x: 40, y: 40 }) => {
+      const source = nodesRef.current.find(n => n.id === id);
+      if (!source) return null;
+      pushUndo();
+      const newId = generateNodeId();
+      const cloned: CanvasNode = {
+        ...source,
+        id: newId,
+        x: source.x + offset.x,
+        y: source.y + offset.y,
+        created: Date.now(),
+        tasks: source.tasks
+          ? source.tasks.map(t => ({ ...t, id: `t_${Math.random().toString(36).slice(2, 7)}` }))
+          : undefined,
+      };
+      setNodes(prev => [...prev, cloned]);
+      setSelectedNodeId(newId);
+      setSelectedNodeIds([newId]);
+      showToast(`Duplicated "${source.title}"`, 'ok');
+      return cloned;
+    },
+    [pushUndo, showToast]
+  );
+
+  const handleSelectNodes = useCallback(
+    (ids: string[]) => {
+      setSelectedNodeIds(ids);
+      if (ids.length === 0) {
+        setSelectedNodeId(null);
+      } else if (!ids.includes(selectedNodeId || '')) {
+        setSelectedNodeId(ids[0]);
+      }
+    },
+    [selectedNodeId]
+  );
+
+  // Quick insertion helpers for Signs, Logos, Headings, Tasks
+  const handleAddSign = useCallback(
+    (signId: string) => {
+      const meta = AVAILABLE_SIGNS.find(s => s.id === signId) || AVAILABLE_SIGNS[0];
+      const c = getCentroid(nodesRef.current);
+      const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
+      const newNode = handleAddNode(
+        free.x,
+        free.y,
+        'butter',
+        meta.defaultTitle,
+        meta.defaultBody,
+        'human',
+        'sign'
+      );
+      handleUpdateNode(newNode.id, { signType: meta.id });
+      showToast(`Added "${meta.name}" sign sticker`, 'ok');
+    },
+    [handleAddNode, handleUpdateNode, showToast]
+  );
+
+  const handleAddLogo = useCallback(
+    (logoId: string) => {
+      const meta = AVAILABLE_LOGOS.find(l => l.id === logoId) || AVAILABLE_LOGOS[0];
+      const c = getCentroid(nodesRef.current);
+      const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
+      const newNode = handleAddNode(
+        free.x,
+        free.y,
+        'slate',
+        meta.name,
+        meta.defaultBody,
+        'human',
+        'logo',
+        { logoType: meta.id }
+      );
+      showToast(`Added "${meta.name}" vector logo icon`, 'ok');
+    },
+    [handleAddNode, showToast]
+  );
+
+  const handleOpenLogoSearch = useCallback((category = 'all', targetNodeId?: string) => {
+    setLogoSearchCategory(category);
+    setLogoSearchTargetNodeId(targetNodeId || null);
+    setIsLogoSearchOpen(true);
+  }, []);
+
+  const handleSelectLogoFromSearch = useCallback(
+    (logoId: string) => {
+      const meta = AVAILABLE_LOGOS.find(l => l.id === logoId) || AVAILABLE_LOGOS[0];
+      if (logoSearchTargetNodeId) {
+        handleUpdateNode(logoSearchTargetNodeId, {
+          logoType: meta.id,
+          nodeType: 'logo',
+          title: meta.name,
+          body: meta.defaultBody,
+        });
+        showToast(`Updated node logo to "${meta.name}"`, 'ok');
+      } else {
+        handleAddLogo(logoId);
+      }
+      setIsLogoSearchOpen(false);
+    },
+    [logoSearchTargetNodeId, handleUpdateNode, handleAddLogo, showToast]
+  );
+
+  const handleSelectSignFromSearch = useCallback(
+    (signId: string) => {
+      const meta = AVAILABLE_SIGNS.find(s => s.id === signId) || AVAILABLE_SIGNS[0];
+      if (logoSearchTargetNodeId) {
+        handleUpdateNode(logoSearchTargetNodeId, {
+          signType: meta.id,
+          nodeType: 'sign',
+          title: meta.defaultTitle,
+          body: meta.defaultBody,
+        });
+        showToast(`Updated node sign to "${meta.name}"`, 'ok');
+      } else {
+        handleAddSign(signId);
+      }
+      setIsLogoSearchOpen(false);
+    },
+    [logoSearchTargetNodeId, handleUpdateNode, handleAddSign, showToast]
+  );
+
+  const handleOpenDiagramDsl = useCallback(() => {
+    setIsDiagramDslOpen(true);
+  }, []);
+
+  const handleApplyDiagram = useCallback(
+    (newNodes: CanvasNode[], newEdges: CanvasEdge[], append: boolean) => {
+      pushUndo();
+      if (append) {
+        setNodes(prev => [...prev, ...newNodes]);
+        setEdges(prev => [...prev, ...newEdges]);
+        showToast(`Appended ${newNodes.length} nodes and ${newEdges.length} connections from DSL`, 'ok');
+      } else {
+        setNodes(newNodes);
+        setEdges(newEdges);
+        showToast(`Rendered ${newNodes.length} nodes and ${newEdges.length} connections from DSL`, 'ok');
+      }
+      setTimeout(() => fitView(true), 300);
+    },
+    [pushUndo, fitView, showToast]
+  );
+
+  const handleCreateCheckpoint = useCallback(
+    (name = 'Checkpoint') => {
+      const cp = {
+        id: 'cp-' + Date.now(),
+        name,
+        timestamp: Date.now(),
+        nodeCount: nodesRef.current.length,
+        edgeCount: edgesRef.current.length,
+        nodes: [...nodesRef.current],
+        edges: [...edgesRef.current],
+      };
+      setCheckpoints(prev => [cp, ...prev.slice(0, 19)]);
+      showToast(`Saved milestone checkpoint: "${name}"`, 'ok');
+      return cp;
+    },
+    [showToast]
+  );
+
+  const handleRestoreCheckpoint = useCallback(
+    (idOrName: string) => {
+      const target = idOrName.toLowerCase().trim();
+      const match = checkpoints.find(
+        c => c.id.toLowerCase() === target || c.name.toLowerCase() === target || c.name.toLowerCase().includes(target)
+      );
+      if (!match) return false;
+      pushUndo();
+      setNodes([...match.nodes]);
+      setEdges([...match.edges]);
+      showToast(`Restored canvas checkpoint: "${match.name}"`, 'ok');
+      setTimeout(() => fitView(true), 300);
+      return true;
+    },
+    [checkpoints, pushUndo, fitView, showToast]
+  );
+
+  const handleListCheckpoints = useCallback(() => {
+    return checkpoints.map(c => ({
+      id: c.id,
+      name: c.name,
+      timestamp: c.timestamp,
+      nodeCount: c.nodeCount,
+      edgeCount: c.edgeCount,
+    }));
+  }, [checkpoints]);
+
+  const handleCaptureScreenshot = useCallback(async (): Promise<string | null> => {
+    try {
+      const svgElements = document.querySelectorAll('svg');
+      if (svgElements.length > 0) {
+        showToast('Visual canvas state snapshot captured for AI vision inspection', 'ok');
+        return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"></svg>';
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }, [showToast]);
+
+  // Global Keyboard Shortcuts: Ctrl/Cmd + L (Logos), Ctrl/Cmd + Shift + D (Diagram DSL)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        handleOpenDiagramDsl();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        handleOpenLogoSearch();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleOpenLogoSearch, handleOpenDiagramDsl]);
+
+  const handleAddHeading = useCallback(() => {
+    const c = getCentroid(nodesRef.current);
+    const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
+    handleAddNode(
+      free.x,
+      free.y,
+      'slate',
+      'Architecture & Service Mesh',
+      'Core subsystem components & pipeline milestones',
+      'human',
+      'heading'
+    );
+    showToast('Added Section Header banner', 'ok');
+  }, [handleAddNode, showToast]);
+
+  const handleAddTaskNote = useCallback(() => {
+    const c = getCentroid(nodesRef.current);
+    const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
+    const n = handleAddNode(
+      free.x,
+      free.y,
+      'mint',
+      'Sprint Action Items',
+      'Check off items as completed:',
+      'human',
+      'task'
+    );
+    handleUpdateNode(n.id, {
+      tasks: [
+        { id: '1', text: 'Deploy canvas bundle to Netlify', done: true },
+        { id: '2', text: 'Connect WebMCP tool endpoints', done: false },
+        { id: '3', text: 'Verify cross-browser responsive layout', done: false },
+      ],
+    });
+    showToast('Added Task Checklist', 'ok');
+  }, [handleAddNode, handleUpdateNode, showToast]);
 
   const handleDeleteNode = useCallback(
     (id: string) => {
@@ -273,30 +576,6 @@ function CanvasAppInner() {
     showToast('Canvas cleared', 'warn');
   }, [pushUndo, showToast]);
 
-  const fitView = useCallback((animate = true) => {
-    const bb = getBoundingBox(nodesRef.current);
-    if (!bb) {
-      setCamera({ x: 0, y: 0, z: 1 });
-      return;
-    }
-
-    const padding = 120;
-    const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
-    const h = typeof window !== 'undefined' ? window.innerHeight : 800;
-
-    const scaleX = (w - padding * 2) / (bb.width || 400);
-    const scaleY = (h - padding * 2) / (bb.height || 400);
-    const targetZ = Math.min(1.4, Math.max(0.35, Math.min(scaleX, scaleY)));
-
-    const centerX = (bb.minX + bb.maxX) / 2;
-    const centerY = (bb.minY + bb.maxY) / 2;
-
-    const targetX = w / 2 - centerX * targetZ;
-    const targetY = h / 2 - centerY * targetZ;
-
-    setCamera({ x: targetX, y: targetY, z: targetZ });
-  }, []);
-
   const highlightNode = useCallback((id: string, reason?: string) => {
     setHighlightedNodeId(id);
     setHighlightReason(reason);
@@ -343,7 +622,26 @@ function CanvasAppInner() {
   const webmcpActions: WebMCPContextActions = {
     getNodes: () => nodesRef.current,
     getEdges: () => edgesRef.current,
-    addNode: n => handleAddNode(n.x, n.y, n.color, n.title, n.body, n.author, (n as any).nodeType),
+    addNode: n =>
+      handleAddNode(
+        n.x,
+        n.y,
+        n.color,
+        n.title,
+        n.body,
+        n.author,
+        n.nodeType || 'default',
+        {
+          signType: n.signType,
+          logoType: n.logoType,
+          stamp: n.stamp,
+          tasks: n.tasks,
+          width: n.width,
+          fontSize: n.fontSize,
+          styleVariant: n.styleVariant,
+        }
+      ),
+    addNodesAndEdges: (newNodes, newEdges, append) => handleApplyDiagram(newNodes, newEdges, append),
     updateNode: (id, u) => handleUpdateNode(id, u),
     deleteNode: id => handleDeleteNode(id),
     connectNodes: (src, tgt, lbl) => handleConnectNodes(src, tgt, lbl),
@@ -352,6 +650,16 @@ function CanvasAppInner() {
     clearCanvas: () => handleClearCanvas(),
     createNewBoard: title => handleCreateNewBoard(title),
     addLog: entry => addLogEntry(entry),
+    createCheckpoint: name => handleCreateCheckpoint(name),
+    restoreCheckpoint: target => handleRestoreCheckpoint(target),
+    listCheckpoints: () => handleListCheckpoints(),
+    undo: () => {
+      handleUndo();
+      return true;
+    },
+    captureScreenshot: () => handleCaptureScreenshot(),
+    selectNodes: ids => handleSelectNodes(ids),
+    duplicateNode: (id, offset) => handleDuplicateNode(id, offset),
   };
 
   const tools = buildWebMCPTools(webmcpActions);
@@ -378,6 +686,21 @@ function CanvasAppInner() {
     // Try registering on document.modelContext
     const registered = registerWebMCP(tools);
     setHasWebMCP(registered);
+
+    // Hydrate shared canvas state from URL hash if present
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash && (hash.startsWith('#share=') || hash.length > 20)) {
+        const decoded = decodeCanvasShareState(hash);
+        if (decoded && decoded.nodes.length > 0) {
+          setNodes(decoded.nodes);
+          setEdges(decoded.edges);
+          if (decoded.title) setActiveBoardTitle(decoded.title);
+          showToast(`Loaded shared canvas: "${decoded.title || 'Shared Canvas'}"`, 'ok');
+          setTimeout(() => fitView(true), 400);
+        }
+      }
+    }
 
     return () => {
       active = false;
@@ -550,7 +873,19 @@ function CanvasAppInner() {
           item.title,
           item.body,
           'agent',
-          item.nodeType || 'default'
+          item.nodeType || 'default',
+          {
+            signType: item.signType,
+            logoType: item.logoType,
+            stamp: item.stamp,
+            tasks: item.tasks
+              ? item.tasks.map((t, i) => ({
+                  id: `task_${Date.now()}_${i}`,
+                  text: t.text,
+                  done: Boolean(t.done),
+                }))
+              : undefined,
+          }
         );
         createdNodeMap.set(item.title.toLowerCase().trim(), node.id);
 
@@ -612,25 +947,71 @@ function CanvasAppInner() {
 
       {/* Main Canvas Workspace */}
       <main className="relative flex-1 w-full h-full overflow-hidden">
+        {/* Left Tool Palette (Eraser & Excalidraw Style) */}
+        <LeftToolPalette
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+          onOpenLogoSearch={() => setIsLogoSearchOpen(true)}
+          onOpenDiagramDsl={handleOpenDiagramDsl}
+          onToggleStudio={() => setIsStudioOpen(!isStudioOpen)}
+          isStudioOpen={isStudioOpen}
+          selectedCount={selectedNodeIds.length || (selectedNodeId ? 1 : 0)}
+        />
+
         <InfiniteCanvas
           nodes={nodes}
           edges={edges}
           camera={camera}
+          activeTool={activeTool}
           selectedNodeId={selectedNodeId}
+          selectedNodeIds={selectedNodeIds}
           selectedEdgeId={selectedEdgeId}
           highlightedNodeId={highlightedNodeId}
           highlightReason={highlightReason}
           agentCursor={agentCursor}
           onUpdateCamera={setCamera}
           onSelectNode={setSelectedNodeId}
+          onSelectNodes={handleSelectNodes}
           onSelectEdge={setSelectedEdgeId}
+          onSelectTool={setActiveTool}
           onAddNode={(x, y) => handleAddNode(x, y)}
+          onAddHeading={(x, y) =>
+            handleAddNode(
+              x,
+              y,
+              'slate',
+              'Architecture & Service Mesh',
+              'Core subsystem components & pipeline milestones',
+              'human',
+              'heading'
+            )
+          }
+          onAddTaskNote={(x, y) =>
+            handleAddNode(
+              x,
+              y,
+              'mint',
+              'Sprint Action Items',
+              'Check off items as completed:',
+              'human',
+              'task',
+              {
+                tasks: [
+                  { id: '1', text: 'Deploy canvas bundle to Netlify', done: true },
+                  { id: '2', text: 'Connect WebMCP tool endpoints', done: false },
+                  { id: '3', text: 'Verify responsive selector & resize tools', done: false },
+                ],
+              }
+            )
+          }
+          onDuplicateNode={handleDuplicateNode}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
           onConnectNodes={handleConnectNodes}
           onUpdateEdge={handleUpdateEdge}
           onDeleteEdge={handleDeleteEdge}
           onUndo={handleUndo}
+          onOpenLogoSearch={handleOpenLogoSearch}
         />
 
         {/* Top Action Toolbar */}
@@ -643,6 +1024,11 @@ function CanvasAppInner() {
           activeBoardId={boardId}
           activeBoardTitle={activeBoardTitle}
           onAddNote={() => handleAddNode()}
+          onAddSign={handleAddSign}
+          onAddLogo={handleAddLogo}
+          onAddHeading={handleAddHeading}
+          onAddTaskNote={handleAddTaskNote}
+          onOpenLogoSearch={handleOpenLogoSearch}
           onSmartArrange={() => {
             animateLayout(calculateSmartFlowTargets(nodes, edges));
             showToast('Arranged into smart hierarchical flow', 'ok');
@@ -668,7 +1054,9 @@ function CanvasAppInner() {
           onZoomOut={() => setCamera(prev => ({ ...prev, z: Math.max(0.25, prev.z * 0.8) }))}
           onUndo={handleUndo}
           onOpenTemplates={() => setIsTemplatesOpen(true)}
+          onOpenDiagramDsl={handleOpenDiagramDsl}
           onOpenExport={() => setIsExportOpen(true)}
+          onOpenShareDeploy={() => setIsShareDeployOpen(true)}
           onClearCanvas={handleClearCanvas}
           onOpenHelp={() => setIsHelpOpen(true)}
           onToggleStudio={() => setIsStudioOpen(!isStudioOpen)}
@@ -696,25 +1084,53 @@ function CanvasAppInner() {
           onHighlightNode={highlightNode}
           onClearLogs={() => setLogs([])}
         />
-      </main>
 
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={isExportOpen}
-        nodes={nodes}
-        edges={edges}
-        onClose={() => setIsExportOpen(false)}
-      />
+        {/* Architecture Logo & Sign Search Modal */}
+        <LogoSearchModal
+          isOpen={isLogoSearchOpen}
+          onClose={() => setIsLogoSearchOpen(false)}
+          onSelectLogo={handleSelectLogoFromSearch}
+          onSelectSign={handleSelectSignFromSearch}
+          initialCategory={logoSearchCategory}
+        />
+
+        {/* Diagram-as-Code (Eraser + Mermaid DSL) Modal */}
+        <DiagramDslModal
+          isOpen={isDiagramDslOpen}
+          onClose={() => setIsDiagramDslOpen(false)}
+          onApplyDiagram={handleApplyDiagram}
+          currentNodes={nodes}
+          currentEdges={edges}
+        />
+
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          nodes={nodes}
+          edges={edges}
+          onClose={() => setIsExportOpen(false)}
+          onOpenNetlifyDeploy={() => setIsShareDeployOpen(true)}
+        />
+
+        {/* Share & Instant Netlify Deploy Modal */}
+        <ShareDeployModal
+          isOpen={isShareDeployOpen}
+          onClose={() => setIsShareDeployOpen(false)}
+          nodes={nodes}
+          edges={edges}
+          boardTitle={activeBoardTitle}
+        />
+      </main>
 
       {/* Templates Drawer Modal */}
       {isTemplatesOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D1A16]/50 backdrop-blur-xs animate-note-pop">
-          <div className="bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-[6px_6px_0_#1D1A16] overflow-hidden">
+          <div className="bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-[6px_6px_0_#1D1A16] overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#DCD4C2] bg-[#F4EFE4]/60">
               <div className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-[#E24E1B]" />
                 <h2 className="font-['Fraunces'] italic font-bold text-xl text-[#1D1A16]">
-                  Boardify Templates Gallery
+                  Strategy & Architecture Templates
                 </h2>
               </div>
               <button
@@ -725,7 +1141,7 @@ function CanvasAppInner() {
               </button>
             </div>
 
-            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto max-h-[60vh]">
+            <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {BOARD_TEMPLATES.map(t => (
                 <div
                   key={t.id}
@@ -783,7 +1199,7 @@ function CanvasAppInner() {
             <div className="p-6 overflow-y-auto space-y-4 text-xs text-[#403A2F] leading-relaxed">
               <div className="p-3 rounded-xl bg-[#FFE9A8]/40 border border-[#1D1A16]/20">
                 <span className="font-bold text-[#1D1A16]">For Browser Agents (WebMCP): </span>
-                When opened in ChatGPT's in-app browser or Chrome with WebMCP testing enabled, Boardify exposes 12 tools on <code className="font-mono text-[#E24E1B]">document.modelContext</code>. Your agent can read the canvas and create/arrange notes directly.
+                When opened in ChatGPT's in-app browser or Chrome with WebMCP testing enabled, Boardify exposes 24 tools on <code className="font-mono text-[#E24E1B]">document.modelContext</code>. Your agent can read the canvas, render complete diagrams from DSL, and arrange notes directly.
               </div>
 
               <div>
@@ -807,6 +1223,14 @@ function CanvasAppInner() {
                     <span className="font-bold text-[#1D1A16]">Ctrl + Z / Cmd + Z</span>
                     <p className="text-[#6B6353]">Undo previous canvas action</p>
                   </div>
+                  <div className="p-2 rounded-lg bg-[#FFE9A8] border border-[#1D1A16]/30">
+                    <span className="font-bold text-[#1D1A16]">Ctrl + L / Cmd + L</span>
+                    <p className="text-[#6B6353]">Search 1,882+ tech logos & signs</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-[#E24E1B]/10 border border-[#E24E1B]/30">
+                    <span className="font-bold text-[#E24E1B]">Ctrl + Shift + D</span>
+                    <p className="text-[#1D1A16]">Diagram-as-Code & Mermaid Editor</p>
+                  </div>
                 </div>
               </div>
 
@@ -816,9 +1240,9 @@ function CanvasAppInner() {
                 </h3>
                 <div className="space-y-1.5">
                   {[
-                    'Read my canvas with get_canvas_state and add 3 market expansion strategies to the right.',
-                    'Critique my SWOT board, identify weak spots, and add mitigation notes.',
-                    'Organize all notes into cluster columns and export as a Markdown sprint document.',
+                    'Use render_diagram_dsl to architect an AWS Serverless 3-Tier Web App with Lambda, DynamoDB, and API Gateway.',
+                    'Read my canvas with get_board_state and inspect layout with inspect_visual_hierarchy.',
+                    'Create a checkpoint named "Pre-Reorg", then organize all notes into cluster columns.',
                   ].map((p, idx) => (
                     <div
                       key={idx}

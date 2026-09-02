@@ -1,6 +1,25 @@
 export type NoteColor = 'butter' | 'sage' | 'coral' | 'slate' | 'lavender' | 'mint';
 
-export type NodeType = 'default' | 'agent' | 'tool' | 'database' | 'api' | 'cloud' | 'auth' | 'trigger' | 'ui';
+export type NodeType =
+  | 'default'
+  | 'agent'
+  | 'tool'
+  | 'database'
+  | 'api'
+  | 'cloud'
+  | 'auth'
+  | 'trigger'
+  | 'ui'
+  | 'sign'
+  | 'logo'
+  | 'heading'
+  | 'task';
+
+export interface TaskItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
 
 export interface CanvasNode {
   id: string;
@@ -16,6 +35,12 @@ export interface CanvasNode {
   rot?: number;
   tags?: string[];
   nodeType?: NodeType;
+  signType?: string;
+  logoType?: string;
+  stamp?: string;
+  tasks?: TaskItem[];
+  fontSize?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  styleVariant?: 'sticky' | 'glass' | 'badge' | 'signpost' | 'banner' | 'clean' | 'neon';
 }
 
 export interface CanvasEdge {

@@ -8,14 +8,17 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
+import { NetlifyIcon } from '@/components/ui/BrandIcons';
+
 interface ExportModalProps {
   isOpen: boolean;
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   onClose: () => void;
+  onOpenNetlifyDeploy?: () => void;
 }
 
-export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps) {
+export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy }: ExportModalProps) {
   const [activeTab, setActiveTab] = useState<'image' | 'pdf' | 'markdown' | 'mermaid' | 'json'>('image');
   const [copied, setCopied] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -202,31 +205,46 @@ export function ExportModal({ isOpen, nodes, edges, onClose }: ExportModalProps)
         </div>
 
         {/* Tab selection */}
-        <div className="flex items-center gap-1.5 px-6 pt-4 overflow-x-auto">
-          {[
-            { id: 'image', label: 'PNG Image', icon: ImageIcon },
-            { id: 'pdf', label: 'PDF Document', icon: FileDown },
-            { id: 'markdown', label: 'Markdown Outline', icon: FileText },
-            { id: 'mermaid', label: 'Mermaid Chart', icon: Network },
-            { id: 'json', label: 'JSON Backup', icon: Code2 },
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? 'bg-[#1D1A16] text-[#F4EFE4] shadow-[2px_2px_0_#6B6353]'
-                    : 'bg-[#F4EFE4] text-[#1D1A16] border border-[#DCD4C2] hover:bg-[#EAE2D2]'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+        <div className="flex items-center justify-between px-6 pt-4 border-b border-[#DCD4C2] pb-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            {[
+              { id: 'image', label: 'PNG Image', icon: ImageIcon },
+              { id: 'pdf', label: 'PDF Document', icon: FileDown },
+              { id: 'markdown', label: 'Markdown Outline', icon: FileText },
+              { id: 'mermaid', label: 'Mermaid Chart', icon: Network },
+              { id: 'json', label: 'JSON Backup', icon: Code2 },
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-[#1D1A16] text-[#F4EFE4] shadow-[2px_2px_0_#6B6353]'
+                      : 'bg-[#F4EFE4] text-[#1D1A16] border border-[#DCD4C2] hover:bg-[#EAE2D2]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {onOpenNetlifyDeploy && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenNetlifyDeploy();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00C7B7] text-[#0E1E25] text-xs font-extrabold shadow-[2px_2px_0_#1D1A16] border border-[#1D1A16] hover:bg-[#00b0a2] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <NetlifyIcon size={14} />
+              <span>Deploy to Netlify</span>
+            </button>
+          )}
         </div>
 
         {/* Preview box */}
