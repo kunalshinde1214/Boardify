@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { CanvasNode, CanvasEdge } from '@/lib/types';
 import { generateMarkdownExport, generateMermaidExport, getBoundingBox } from '@/lib/layouts';
-import { X, Download, Copy, Check, FileText, Code2, Network, Image as ImageIcon, FileSpreadsheet, Sparkles, FileDown } from 'lucide-react';
+import { exportCanvasToDsl } from '@/lib/diagram-dsl';
+import { X, Download, Copy, Check, FileText, Code2, Network, Image as ImageIcon, FileSpreadsheet, Sparkles, FileDown, Workflow } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -19,7 +20,7 @@ interface ExportModalProps {
 }
 
 export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy }: ExportModalProps) {
-  const [activeTab, setActiveTab] = useState<'image' | 'pdf' | 'markdown' | 'mermaid' | 'json'>('image');
+  const [activeTab, setActiveTab] = useState<'image' | 'pdf' | 'dsl' | 'markdown' | 'mermaid' | 'json'>('image');
   const [copied, setCopied] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isRenderingImage, setIsRenderingImage] = useState(false);
@@ -72,7 +73,9 @@ export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy
   if (!isOpen) return null;
 
   let textContent = '';
-  if (activeTab === 'mermaid') {
+  if (activeTab === 'dsl') {
+    textContent = exportCanvasToDsl(nodes, edges);
+  } else if (activeTab === 'mermaid') {
     textContent = generateMermaidExport(nodes, edges);
   } else if (activeTab === 'json') {
     textContent = JSON.stringify({ version: 1, nodes, edges }, null, 2);
@@ -119,43 +122,41 @@ export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy
 
     if (activeTab === 'pdf') {
       if (!previewImageUrl) {
-        showToast('Preparing PDF snapshot...', 'info');
+        showToast('Rendering PDF canvas preview...', 'info');
         return;
       }
 
       try {
         const doc = new jsPDF({
           orientation: 'landscape',
-          unit: 'pt',
-          format: 'a4',
+          unit: 'px',
+          format: [1200, 800],
         });
 
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-
-        // Header
         doc.setFillColor(244, 239, 228);
-        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        doc.rect(0, 0, 1200, 800, 'F');
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
+        doc.setFontSize(22);
         doc.setTextColor(29, 26, 22);
-        doc.text('Boardify Strategy Canvas', 30, 32);
+        doc.text('Boardify Strategy Canvas Export', 40, 45);
 
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
         doc.setTextColor(107, 99, 83);
-        doc.text(`Exported · ${new Date().toLocaleString()} · ${nodes.length} notes · ${edges.length} links`, 30, 48);
+        doc.text(`Generated on ${new Date().toLocaleDateString()} · ${nodes.length} Notes · ${edges.length} Connections`, 40, 60);
 
-        // Add Image
-        const imgProps = doc.getImageProperties(previewImageUrl);
-        const ratio = imgProps.width / imgProps.height;
-        let printW = pageWidth - 60;
-        let printH = printW / ratio;
+        const pageWidth = 1200;
+        const pageHeight = 800;
+        const margin = 40;
+        const maxW = pageWidth - margin * 2;
+        const maxH = pageHeight - margin * 2 - 40;
 
-        if (printH > pageHeight - 80) {
-          printH = pageHeight - 80;
-          printW = printH * ratio;
+        let printW = maxW;
+        let printH = (maxW * 800) / 1200;
+        if (printH > maxH) {
+          printH = maxH;
+          printW = (maxH * 1200) / 800;
         }
 
         const x = (pageWidth - printW) / 2;
@@ -166,12 +167,11 @@ export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy
         showToast('Downloaded PDF Document!', 'ok');
       } catch (err) {
         console.warn('jsPDF generation failed, opening print dialog fallback:', err);
-        printCanvasFallback(previewImageUrl, 'Boardify Canvas Export');
       }
       return;
     }
 
-    const ext = activeTab === 'json' ? 'json' : activeTab === 'mermaid' ? 'mmd' : 'md';
+    const ext = activeTab === 'json' ? 'json' : activeTab === 'mermaid' ? 'mmd' : activeTab === 'dsl' ? 'dsl' : 'md';
     const mime = activeTab === 'json' ? 'application/json' : 'text/plain';
     const blob = new Blob([textContent], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -210,6 +210,7 @@ export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy
             {[
               { id: 'image', label: 'PNG Image', icon: ImageIcon },
               { id: 'pdf', label: 'PDF Document', icon: FileDown },
+              { id: 'dsl', label: 'Diagram DSL', icon: Workflow },
               { id: 'markdown', label: 'Markdown Outline', icon: FileText },
               { id: 'mermaid', label: 'Mermaid Chart', icon: Network },
               { id: 'json', label: 'JSON Backup', icon: Code2 },

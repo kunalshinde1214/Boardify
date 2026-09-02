@@ -123,18 +123,92 @@ function DocsPageInner() {
       sampleOutput: '{\n  "success": true,\n  "format": "markdown",\n  "note_count": 5,\n  "link_count": 4,\n  "content": "# Boardify Export..."\n}',
     },
     {
-      name: 'batch_create_nodes',
-      description: 'Create multiple linked sticky notes in a single atomic tool call (ideal for frameworks like SWOT or brainstorms).',
+      name: 'render_diagram_dsl',
+      description: 'Parse and render an entire architectural diagram from Eraser/Mermaid DSL text in one call.',
       inputSchema: {
         type: 'object',
         properties: {
-          nodes: { type: 'array', description: 'Array of node objects' },
-          links: { type: 'array', description: 'Array of link objects with fromIndex and toIndex' },
+          dsl_text: { type: 'string', description: 'Diagram as Code DSL text' },
+          append: { type: 'boolean', description: 'Append to canvas or replace' },
         },
-        required: ['nodes'],
+        required: ['dsl_text'],
       },
-      sampleInput: '{\n  "nodes": [\n    { "title": "Strength", "color": "sage" },\n    { "title": "Weakness", "color": "coral" }\n  ],\n  "links": [\n    { "fromIndex": 0, "toIndex": 1, "label": "offsets" }\n  ]\n}',
-      sampleOutput: '{\n  "success": true,\n  "created_count": 2,\n  "node_ids": ["n5", "n6"]\n}',
+      sampleInput: '{\n  "dsl_text": "direction: LR\\n\\nClient [icon: react, title: \\"Web UI\\"]\\nAPI [icon: nextjs, title: \\"Backend API\\"]\\nDB [icon: postgres, title: \\"Main DB\\"]\\n\\nClient --> API: \\"HTTPS\\"\\nAPI --> DB: \\"SQL\\"",\n  "append": false\n}',
+      sampleOutput: '{\n  "success": true,\n  "node_count": 3,\n  "edge_count": 2,\n  "message": "Rendered 3 nodes and 2 edges from DSL"\n}',
+    },
+    {
+      name: 'place_node_relative',
+      description: 'Position a new or existing note relative to another note using semantic offsets ("right_of", "left_of", "below", "above", "branch_right").',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          anchor_node_id: { type: 'string', description: 'Reference anchor node ID' },
+          relation: { type: 'string', enum: ['right_of', 'left_of', 'below', 'above', 'branch_right', 'branch_left'] },
+          title: { type: 'string' },
+          body: { type: 'string' },
+          color: { type: 'string', enum: ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'] },
+          connect_from_anchor: { type: 'boolean' },
+          connection_label: { type: 'string' },
+        },
+        required: ['anchor_node_id', 'relation', 'title'],
+      },
+      sampleInput: '{\n  "anchor_node_id": "n1",\n  "relation": "right_of",\n  "title": "Downstream Worker",\n  "connect_from_anchor": true,\n  "connection_label": "dispatches"\n}',
+      sampleOutput: '{\n  "success": true,\n  "node_id": "n7",\n  "anchor_id": "n1",\n  "x": 380,\n  "y": 120\n}',
+    },
+    {
+      name: 'resize_node',
+      description: 'Adjust the width, height, size preset (S, M, L, XL), or font size of any note or component.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Node ID to resize' },
+          width: { type: 'number' },
+          height: { type: 'number' },
+          size_preset: { type: 'string', enum: ['S', 'M', 'L', 'XL'] },
+          font_size: { type: 'string', enum: ['sm', 'md', 'lg', 'xl', '2xl'] },
+        },
+        required: ['id'],
+      },
+      sampleInput: '{\n  "id": "n1",\n  "width": 380,\n  "size_preset": "L",\n  "font_size": "lg"\n}',
+      sampleOutput: '{\n  "success": true,\n  "node_id": "n1",\n  "width": 380,\n  "height": 220\n}',
+    },
+    {
+      name: 'select_canvas_elements',
+      description: 'Select one or more canvas elements by ID, select all, or clear active selection.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ids: { type: 'array', items: { type: 'string' } },
+          select_all: { type: 'boolean' },
+          clear_selection: { type: 'boolean' },
+        },
+      },
+      sampleInput: '{\n  "ids": ["n1", "n2", "n3"]\n}',
+      sampleOutput: '{\n  "success": true,\n  "selected_count": 3,\n  "selected_ids": ["n1", "n2", "n3"]\n}',
+    },
+    {
+      name: 'create_checkpoint',
+      description: 'Save a named milestone snapshot of the canvas with automatic rollback ability.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Descriptive checkpoint name' },
+        },
+      },
+      sampleInput: '{\n  "name": "Phase 1: Architecture Signoff"\n}',
+      sampleOutput: '{\n  "success": true,\n  "checkpoint_id": "cp-1788366900",\n  "name": "Phase 1: Architecture Signoff",\n  "node_count": 8\n}',
+    },
+    {
+      name: 'inspect_canvas_screenshot',
+      description: 'Capture a high-res SVG/raster visual snapshot of the canvas for multimodal AI visual QA.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          format: { type: 'string', enum: ['svg', 'png'] },
+        },
+      },
+      sampleInput: '{\n  "format": "svg"\n}',
+      sampleOutput: '{\n  "success": true,\n  "format": "svg",\n  "data_url": "data:image/svg+xml;base64,..."\n}',
     },
   ];
 
