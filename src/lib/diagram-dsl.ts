@@ -10,6 +10,8 @@ export interface ParsedDslNode {
   logoType?: string;
   signType?: string;
   color: NoteColor;
+  fields?: { id: string; name: string; type: string; isPrimaryKey?: boolean; isForeignKey?: boolean }[];
+  shapeType?: 'rectangle' | 'circle' | 'diamond' | 'cylinder' | 'hexagon' | 'cloud';
 }
 
 export interface ParsedDslEdge {
@@ -117,21 +119,62 @@ export function parseDiagramDsl(dslText: string): ParsedDiagram {
     let line = rawLine.trim();
     if (!line || line.startsWith('//') || line.startsWith('#') || line.startsWith('%%')) continue;
 
-    // Direction directive: e.g. "direction: TB" or "graph LR" or "flowchart TD"
-    if (/^(direction\s*:\s*(LR|TB|TD|RL))/i.test(line) || /^(graph|flowchart)\s+(LR|TB|TD|RL)/i.test(line)) {
+    // Direction directive: e.g. "direction: TB" or "graph LR" or "flowchart TD" or "erDiagram"
+    if (/^(direction\s*:\s*(LR|TB|TD|RL))/i.test(line) || /^(graph|flowchart)\s+(LR|TB|TD|RL)/i.test(line) || /^erDiagram/i.test(line)) {
       if (/TB|TD/i.test(line)) direction = 'TB';
       else direction = 'LR';
       continue;
     }
 
-    // 1. Connection line: A -> B or A --> B or A -> B: "Label" or A --- B
-    // Regex for edge with optional label
-    const edgeMatch = line.match(/^(.+?)\s*(-->|->|---|--\s*>\s*)\s*(.+)$/);
+    // 0. ER Diagram Entity Block: e.g. entity Users { id UUID PK, email VARCHAR, ... }
+    const entityMatch = line.match(/^entity\s+([a-zA-Z0-9_-]+)\s*(?:\[(.*?)\])?\s*\{(.*?)\}$/i);
+    if (entityMatch) {
+      const entityId = entityMatch[1].trim();
+      const entityAttrs = entityMatch[2] || '';
+      const fieldsRaw = entityMatch[3].trim();
+
+      const node = ensureNode(entityId);
+      node.nodeType = 'entity';
+      node.title = entityId;
+
+      const parsedFields: { id: string; name: string; type: string; isPrimaryKey?: boolean; isForeignKey?: boolean }[] = [];
+      const fieldItems = fieldsRaw.split(/[,\n;]+/).map(f => f.trim()).filter(Boolean);
+
+      fieldItems.forEach((fStr, fIdx) => {
+        const parts = fStr.split(/\s+/);
+        if (parts.length > 0) {
+          const fName = parts[0];
+          const fType = parts[1] || 'VARCHAR';
+          const isPK = /PK|primary/i.test(fStr);
+          const isFK = /FK|foreign/i.test(fStr);
+          parsedFields.push({
+            id: `f_${fIdx + 1}`,
+            name: fName,
+            type: fType,
+            isPrimaryKey: isPK,
+            isForeignKey: isFK,
+          });
+        }
+      });
+
+      if (parsedFields.length > 0) {
+        node.fields = parsedFields;
+      }
+      continue;
+    }
+
+    // 1. Connection line: A -> B or A --> B or A ||--o{ B or A }|--|| B or A -> B: "Label" or A --- B
+    const edgeMatch = line.match(/^(.+?)\s*(-->|->|---|--\s*>\s*|\|\|--o\{|}\|--\|\||\|\|--\|\||\}o--o\{|--)\s*(.+)$/);
     if (edgeMatch) {
       let fromPart = edgeMatch[1].trim();
       const connector = edgeMatch[2].trim();
       let toPart = edgeMatch[3].trim();
       let edgeLabel: string | undefined = undefined;
+
+      // Default ER labels if connector is a cardinality symbol
+      if (connector === '||--o{' || connector === '}o--o{') edgeLabel = '1 : N';
+      else if (connector === '||--||') edgeLabel = '1 : 1';
+      else if (connector === '}|--||') edgeLabel = 'N : 1';
 
       // Extract label if written as: toPart: "Label" or toPart |Label| or toPart -- "Label" -->
       const labelMatch = toPart.match(/^(.+?)\s*:\s*["']?([^"']+)["']?$/);
@@ -383,13 +426,15 @@ export function layoutDiagramDsl(
         body: pNode.body,
         x: Math.round(x),
         y: Math.round(y),
-        width,
+        width: pNode.nodeType === 'entity' ? 260 : width,
         color: pNode.color,
         author: 'agent',
         created: now,
         nodeType: pNode.nodeType,
         logoType: pNode.logoType,
         signType: pNode.signType,
+        fields: pNode.fields,
+        shapeType: pNode.shapeType,
       });
     });
   });

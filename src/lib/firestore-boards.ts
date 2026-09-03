@@ -283,21 +283,32 @@ export function updateBoardIndexMeta(id: string, title: string, nodeCount: numbe
   saveBoardsIndex(existing);
 }
 
-export function createBoardFromTemplate(template: BoardTemplate): CanvasState {
+export function createBoardFromTemplate(
+  template: BoardTemplate,
+  offset: { x: number; y: number } = { x: 0, y: 0 }
+): CanvasState {
   const timestamp = Date.now();
   const nodes: CanvasNode[] = template.nodes.map((n, idx) => {
     return {
       id: `n_tmpl_${idx + 1}_${timestamp}`,
       title: n.title,
       body: n.body,
-      x: n.x,
-      y: n.y,
+      x: n.x + offset.x,
+      y: n.y + offset.y,
       width: n.width || 230,
+      height: n.height,
       color: n.color || 'butter',
       author: n.author || 'human',
       created: timestamp + idx * 10,
-      rot: ((idx * 37) % 7 - 3) * 0.6,
-      nodeType: 'default',
+      rot: n.rot !== undefined ? n.rot : ((idx * 37) % 7 - 3) * 0.6,
+      nodeType: n.nodeType || 'default',
+      shapeType: n.shapeType,
+      logoType: n.logoType,
+      signType: n.signType,
+      fields: n.fields ? [...n.fields] : undefined,
+      tasks: n.tasks ? [...n.tasks] : undefined,
+      fontSize: n.fontSize,
+      stamp: n.stamp,
     };
   });
 

@@ -13,12 +13,17 @@ import {
   Eraser,
   Sparkles,
   Search,
+  Briefcase,
+  Table2,
+  Diamond,
 } from 'lucide-react';
 
 export type CanvasToolType =
   | 'select'
   | 'hand'
   | 'note'
+  | 'shape'
+  | 'erd'
   | 'logo'
   | 'heading'
   | 'task'
@@ -30,6 +35,7 @@ interface LeftToolPaletteProps {
   onSelectTool: (tool: CanvasToolType) => void;
   onOpenLogoSearch: () => void;
   onOpenDiagramDsl: () => void;
+  onOpenProfessionAssets?: () => void;
   onToggleStudio: () => void;
   isStudioOpen: boolean;
   selectedCount?: number;
@@ -40,6 +46,7 @@ export function LeftToolPalette({
   onSelectTool,
   onOpenLogoSearch,
   onOpenDiagramDsl,
+  onOpenProfessionAssets,
   onToggleStudio,
   isStudioOpen,
   selectedCount = 0,
@@ -64,6 +71,20 @@ export function LeftToolPalette({
       shortcut: 'H',
       icon: Hand,
       description: 'Drag canvas freely to navigate without moving notes.',
+    },
+    {
+      id: 'shape',
+      label: 'Shapes & Roles',
+      shortcut: 'S',
+      icon: Diamond,
+      description: 'Place geometric shapes (decision diamonds, cylinders, hexagons).',
+    },
+    {
+      id: 'erd',
+      label: 'ER Table (ERD)',
+      shortcut: 'E',
+      icon: Table2,
+      description: 'Drop relational database SQL schema tables with PK/FK columns.',
     },
     {
       id: 'note',
@@ -103,7 +124,7 @@ export function LeftToolPalette({
     {
       id: 'eraser',
       label: 'Eraser',
-      shortcut: 'E',
+      shortcut: 'X',
       icon: Eraser,
       description: 'Click any note or connection wire to delete it.',
     },
@@ -112,10 +133,10 @@ export function LeftToolPalette({
   return (
     <aside
       aria-label="Canvas Tool Palette"
-      className="absolute left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1.5 p-2 bg-[#FFFDF6]/95 backdrop-blur-md border-2 border-[#1D1A16] rounded-2xl shadow-[4px_4px_0_#1D1A16] transition-all"
+      className="absolute left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1 p-1.5 bg-[#FFFDF6]/95 backdrop-blur-md border-2 border-[#1D1A16] rounded-2xl shadow-[4px_4px_0_#1D1A16] transition-all max-h-[calc(100vh-140px)] overflow-y-auto no-scrollbar"
     >
       {/* Primary Tool Switchers */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
         {tools.map(tool => {
           const Icon = tool.icon;
           const isActive = activeTool === tool.id;
@@ -130,7 +151,7 @@ export function LeftToolPalette({
                   onSelectTool(tool.id);
                 }
               }}
-              className={`relative group p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
+              className={`relative group p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
                 isActive
                   ? 'bg-[#1D1A16] text-[#FFFDF6] shadow-[2px_2px_0_#E24E1B]'
                   : 'text-[#1D1A16] hover:bg-[#F4EFE4] hover:text-[#E24E1B]'
@@ -151,12 +172,30 @@ export function LeftToolPalette({
         })}
       </div>
 
-      <div className="w-6 h-px bg-[#DCD4C2] my-1" />
+      {/* Subtle Divider */}
+      <div className="w-5 h-[1px] bg-[#1D1A16]/15 my-0.5" />
+
+      {/* Quick Action: Profession Assets & Roles Studio */}
+      {onOpenProfessionAssets && (
+        <button
+          onClick={onOpenProfessionAssets}
+          className="relative group p-2 rounded-xl text-[#1D1A16] hover:bg-[#DCEBC8] hover:text-[#2E5E1B] transition-colors cursor-pointer"
+          title="Profession Assets & Role Studio"
+        >
+          <Briefcase className="w-4 h-4 text-emerald-700" />
+          <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-[#1D1A16] text-[#FFFDF6] text-xs font-bold rounded-lg shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 flex items-center gap-2">
+            <span>Profession Assets</span>
+            <span className="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono font-bold">
+              Roles & ERD
+            </span>
+          </div>
+        </button>
+      )}
 
       {/* Quick Action: Diagram as Code (DSL) */}
       <button
         onClick={onOpenDiagramDsl}
-        className="relative group p-2.5 rounded-xl text-[#1D1A16] hover:bg-[#FFE9A8] hover:text-[#B33A10] transition-colors cursor-pointer"
+        className="relative group p-2 rounded-xl text-[#1D1A16] hover:bg-[#FFE9A8] hover:text-[#B33A10] transition-colors cursor-pointer"
         title="Diagram-as-Code DSL & Mermaid Editor (Ctrl+Shift+D)"
       >
         <Code2 className="w-4 h-4 text-[#E24E1B]" />
@@ -171,7 +210,7 @@ export function LeftToolPalette({
       {/* Quick Action: Search Logos */}
       <button
         onClick={onOpenLogoSearch}
-        className="relative group p-2.5 rounded-xl text-[#1D1A16] hover:bg-[#F4EFE4] transition-colors cursor-pointer"
+        className="relative group p-2 rounded-xl text-[#1D1A16] hover:bg-[#F4EFE4] transition-colors cursor-pointer"
         title="Search All 1,882+ Tech Logos (Ctrl+L)"
       >
         <Search className="w-4 h-4 text-[#00C7B7]" />
@@ -186,7 +225,7 @@ export function LeftToolPalette({
       {/* Quick Action: Agent Studio */}
       <button
         onClick={onToggleStudio}
-        className={`relative group p-2.5 rounded-xl transition-all cursor-pointer ${
+        className={`relative group p-2 rounded-xl transition-all cursor-pointer ${
           isStudioOpen
             ? 'bg-[#E24E1B] text-white shadow-[2px_2px_0_#1D1A16]'
             : 'text-[#E24E1B] hover:bg-[#FFD8C7]'
@@ -202,7 +241,7 @@ export function LeftToolPalette({
       {/* Selected Items Counter Badge if > 0 */}
       {selectedCount > 0 && (
         <div
-          className="mt-1 px-1.5 py-0.5 rounded-full bg-[#E24E1B] text-white text-[10px] font-mono font-bold shadow-xs animate-note-pop"
+          className="mt-0.5 px-1.5 py-0.5 rounded-full bg-[#E24E1B] text-white text-[10px] font-mono font-bold shadow-xs animate-note-pop"
           title={`${selectedCount} item${selectedCount > 1 ? 's' : ''} selected`}
         >
           {selectedCount}

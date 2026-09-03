@@ -47,6 +47,7 @@ interface TopToolbarProps {
   onTidyTimeline: () => void;
   onTidyKanban: () => void;
   onTidyForceDirected: () => void;
+  onDeOverlap?: () => void;
   onFitView: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -82,6 +83,7 @@ export function TopToolbar({
   onTidyTimeline,
   onTidyKanban,
   onTidyForceDirected,
+  onDeOverlap,
   onFitView,
   onZoomIn,
   onZoomOut,
@@ -313,6 +315,15 @@ export function TopToolbar({
             <Workflow className="w-3 h-3 text-amber-700" />
             <span>Smart Pipeline</span>
           </button>
+          {onDeOverlap && (
+            <button
+              onClick={onDeOverlap}
+              className="text-left px-2.5 py-1.5 text-xs font-semibold rounded-lg hover:bg-[#FFE9A8] text-[#1D1A16] flex items-center gap-1.5 cursor-pointer"
+            >
+              <Maximize className="w-3 h-3 text-[#E24E1B]" />
+              <span>De-Overlap & Space Out</span>
+            </button>
+          )}
           <button
             onClick={onTidyForceDirected}
             className="text-left px-2.5 py-1.5 text-xs font-semibold rounded-lg hover:bg-[#DCEBC8] text-[#1D1A16] flex items-center gap-1.5 cursor-pointer"

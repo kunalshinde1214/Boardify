@@ -27,6 +27,8 @@ interface InfiniteCanvasProps {
   onAddNode: (x: number, y: number) => void;
   onAddHeading?: (x: number, y: number) => void;
   onAddTaskNote?: (x: number, y: number) => void;
+  onAddEntityTable?: (x: number, y: number) => void;
+  onAddShapeNode?: (x: number, y: number, shapeType?: string) => void;
   onDuplicateNode?: (id: string) => void;
   onUpdateNode: (id: string, updates: Partial<CanvasNode>) => void;
   onDeleteNode: (id: string) => void;
@@ -35,6 +37,7 @@ interface InfiniteCanvasProps {
   onDeleteEdge: (id: string) => void;
   onUndo: () => void;
   onOpenLogoSearch?: (category?: string, targetNodeId?: string) => void;
+  isStudioOpen?: boolean;
 }
 
 export function InfiniteCanvas({
@@ -48,6 +51,7 @@ export function InfiniteCanvas({
   highlightedNodeId,
   highlightReason,
   agentCursor,
+  isStudioOpen = false,
   onUpdateCamera,
   onSelectNode,
   onSelectNodes,
@@ -56,6 +60,8 @@ export function InfiniteCanvas({
   onAddNode,
   onAddHeading,
   onAddTaskNote,
+  onAddEntityTable,
+  onAddShapeNode,
   onDuplicateNode,
   onUpdateNode,
   onDeleteNode,
@@ -147,6 +153,18 @@ export function InfiniteCanvas({
 
     if (activeTool === 'task' && onAddTaskNote) {
       onAddTaskNote(Math.round(worldPos.x - 120), Math.round(worldPos.y - 80));
+      if (onSelectTool) onSelectTool('select');
+      return;
+    }
+
+    if (activeTool === 'erd' && onAddEntityTable) {
+      onAddEntityTable(Math.round(worldPos.x - 130), Math.round(worldPos.y - 100));
+      if (onSelectTool) onSelectTool('select');
+      return;
+    }
+
+    if (activeTool === 'shape' && onAddShapeNode) {
+      onAddShapeNode(Math.round(worldPos.x - 100), Math.round(worldPos.y - 70));
       if (onSelectTool) onSelectTool('select');
       return;
     }
@@ -594,6 +612,7 @@ export function InfiniteCanvas({
         camera={camera}
         viewportWidth={viewportSize.width}
         viewportHeight={viewportSize.height}
+        isStudioOpen={isStudioOpen}
         onNavigate={(targetX, targetY) => {
           onUpdateCamera({
             ...camera,

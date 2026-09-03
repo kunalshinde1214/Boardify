@@ -1,0 +1,340 @@
+import { NoteColor, NodeType, EntityField } from './types';
+
+export interface ProfessionAssetItem {
+  id: string;
+  name: string;
+  role: 'software' | 'product' | 'ai' | 'design' | 'business';
+  category: string;
+  defaultTitle: string;
+  defaultBody: string;
+  color: NoteColor;
+  nodeType: NodeType;
+  logoType?: string;
+  signType?: string;
+  shapeType?: 'rectangle' | 'circle' | 'diamond' | 'cylinder' | 'hexagon' | 'cloud';
+  stamp?: string;
+  width?: number;
+  height?: number;
+  tasks?: { id: string; text: string; done: boolean }[];
+  fields?: EntityField[];
+}
+
+export const PROFESSION_ROLES = [
+  { id: 'all', name: 'All Roles' },
+  { id: 'software', name: 'Software & Cloud', description: 'Architecture, DB schemas, microservices, APIs, infra' },
+  { id: 'product', name: 'Product & Strategy', description: 'User journeys, epics, roadmaps, OKRs, user stories' },
+  { id: 'ai', name: 'AI & Data Science', description: 'RAG pipelines, vector stores, models, evaluation' },
+  { id: 'design', name: 'UI/UX & Research', description: 'Wireframes, personas, user feedback, design tokens' },
+  { id: 'business', name: 'Business & Growth', description: 'Funnels, leads, MRR metrics, GTM loops, sales pipelines' },
+] as const;
+
+export const SHAPE_PRESETS = [
+  {
+    id: 'shape_rectangle',
+    name: 'Process / Box',
+    shapeType: 'rectangle' as const,
+    nodeType: 'shape_rectangle' as NodeType,
+    color: 'butter' as NoteColor,
+    icon: 'Square',
+    description: 'Standard functional block or process step',
+  },
+  {
+    id: 'shape_diamond',
+    name: 'Decision Diamond',
+    shapeType: 'diamond' as const,
+    nodeType: 'shape_diamond' as NodeType,
+    color: 'coral' as NoteColor,
+    icon: 'Diamond',
+    description: 'Conditional branch or evaluation logic',
+  },
+  {
+    id: 'shape_cylinder',
+    name: 'Storage Cylinder',
+    shapeType: 'cylinder' as const,
+    nodeType: 'shape_cylinder' as NodeType,
+    color: 'slate' as NoteColor,
+    icon: 'Database',
+    description: 'Persistent data store, disk volume, or warehouse',
+  },
+  {
+    id: 'shape_hexagon',
+    name: 'Service Hexagon',
+    shapeType: 'hexagon' as const,
+    nodeType: 'shape_hexagon' as NodeType,
+    color: 'mint' as NoteColor,
+    icon: 'Hexagon',
+    description: 'Microservice, standalone API, or hexagonal architecture domain',
+  },
+  {
+    id: 'shape_circle',
+    name: 'State / Terminal',
+    shapeType: 'circle' as const,
+    nodeType: 'shape_circle' as NodeType,
+    color: 'lavender' as NoteColor,
+    icon: 'Circle',
+    description: 'Start, end state, or circular workflow hub',
+  },
+  {
+    id: 'shape_cloud',
+    name: 'Cloud Boundary',
+    shapeType: 'cloud' as const,
+    nodeType: 'shape_cloud' as NodeType,
+    color: 'sage' as NoteColor,
+    icon: 'Cloud',
+    description: 'External network, VPC boundary, or third-party service',
+  },
+];
+
+export const PROFESSION_ASSETS: ProfessionAssetItem[] = [
+  // --- SOFTWARE & CLOUD ARCHITECTS ---
+  {
+    id: 'erd-users-table',
+    name: 'SQL Entity Table (Users)',
+    role: 'software',
+    category: 'Database & Schemas',
+    defaultTitle: 'users',
+    defaultBody: 'PostgreSQL Relational Schema',
+    color: 'slate',
+    nodeType: 'entity',
+    width: 260,
+    fields: [
+      { id: 'f1', name: 'id', type: 'UUID', isPrimaryKey: true },
+      { id: 'f2', name: 'email', type: 'VARCHAR(255)', isNullable: false },
+      { id: 'f3', name: 'hashed_password', type: 'VARCHAR(255)' },
+      { id: 'f4', name: 'role', type: 'VARCHAR(50)' },
+      { id: 'f5', name: 'created_at', type: 'TIMESTAMP' },
+    ],
+  },
+  {
+    id: 'erd-orders-table',
+    name: 'SQL Entity Table (Orders)',
+    role: 'software',
+    category: 'Database & Schemas',
+    defaultTitle: 'orders',
+    defaultBody: 'Order Transactions Schema',
+    color: 'butter',
+    nodeType: 'entity',
+    width: 260,
+    fields: [
+      { id: 'f1', name: 'id', type: 'UUID', isPrimaryKey: true },
+      { id: 'f2', name: 'user_id', type: 'UUID', isForeignKey: true, foreignTable: 'users' },
+      { id: 'f3', name: 'total_amount', type: 'DECIMAL(10,2)' },
+      { id: 'f4', name: 'status', type: 'VARCHAR(32)' },
+      { id: 'f5', name: 'created_at', type: 'TIMESTAMP' },
+    ],
+  },
+  {
+    id: 'arch-api-gateway',
+    name: 'API Gateway Proxy',
+    role: 'software',
+    category: 'Infrastructure',
+    defaultTitle: 'API Gateway',
+    defaultBody: 'Rate limiting: 10k req/s\nJWT auth validation & SSL termination',
+    color: 'mint',
+    nodeType: 'logo',
+    logoType: 'gil-aws-api-gateway',
+    shapeType: 'hexagon',
+  },
+  {
+    id: 'arch-redis-cache',
+    name: 'Redis In-Memory Cache',
+    role: 'software',
+    category: 'Infrastructure',
+    defaultTitle: 'Redis Cache Cluster',
+    defaultBody: 'Sub-millisecond query cache & token blacklisting',
+    color: 'coral',
+    nodeType: 'logo',
+    logoType: 'redis',
+    shapeType: 'cylinder',
+  },
+  {
+    id: 'arch-k8s-pod',
+    name: 'Kubernetes Pod Cluster',
+    role: 'software',
+    category: 'Infrastructure',
+    defaultTitle: 'K8s Service Mesh',
+    defaultBody: 'Autoscaling replica set (3-12 pods)\nHealthcheck probe: /healthz',
+    color: 'slate',
+    nodeType: 'logo',
+    logoType: 'kubernetes',
+    shapeType: 'hexagon',
+  },
+  {
+    id: 'arch-kafka-topic',
+    name: 'Kafka Event Stream',
+    role: 'software',
+    category: 'Infrastructure',
+    defaultTitle: 'Event Bus (Kafka)',
+    defaultBody: 'Topics: order.created, user.signup\nPartition count: 12',
+    color: 'coral',
+    nodeType: 'logo',
+    logoType: 'kafka',
+  },
+
+  // --- PRODUCT MANAGERS & STRATEGISTS ---
+  {
+    id: 'pm-user-persona',
+    name: 'User Persona Card',
+    role: 'product',
+    category: 'Discovery',
+    defaultTitle: 'Persona: Tech-Forward CTO',
+    defaultBody: 'Goals: Ship faster with agentic tools.\nPain Points: Lack of spatial visibility in chatbot logs.\nBudget: $2k/mo SaaS.',
+    color: 'butter',
+    nodeType: 'default',
+    stamp: 'MVP',
+  },
+  {
+    id: 'pm-journey-step',
+    name: 'User Journey Milestone',
+    role: 'product',
+    category: 'Journey Mapping',
+    defaultTitle: 'Step 3: First Whiteboard Share',
+    defaultBody: 'User shares Netlify deploy link with engineering team. Immediate "Aha!" moment on live multiplayer sync.',
+    color: 'mint',
+    nodeType: 'shape_rectangle',
+  },
+  {
+    id: 'pm-feature-epic',
+    name: 'Feature Epic Checklist',
+    role: 'product',
+    category: 'Roadmap & Epics',
+    defaultTitle: 'Epic: Autonomous Whiteboard Agent',
+    defaultBody: 'Deliverables for Q1 Milestone:',
+    color: 'lavender',
+    nodeType: 'task',
+    tasks: [
+      { id: '1', text: 'Implement WebMCP document.modelContext', done: true },
+      { id: '2', text: 'Add Entity-Relationship SQL schemas', done: false },
+      { id: '3', text: 'Netlify 1-Click Drop exporter', done: true },
+      { id: '4', text: 'Live Agent Ghost Cursor presence', done: true },
+    ],
+  },
+  {
+    id: 'pm-decision-gate',
+    name: 'Feature Gate Decision',
+    role: 'product',
+    category: 'Discovery',
+    defaultTitle: 'Ready for Public Beta?',
+    defaultBody: 'Criteria: >80% satisfaction score & 0 high-severity crash reports.',
+    color: 'coral',
+    nodeType: 'shape_diamond',
+  },
+
+  // --- AI & DATA SCIENTISTS ---
+  {
+    id: 'ai-rag-pipeline',
+    name: 'RAG Embeddings Node',
+    role: 'ai',
+    category: 'AI Pipeline',
+    defaultTitle: 'Vector Embeddings (text-embedding-3)',
+    defaultBody: 'Chunk size: 512 tokens\nOverlap: 64 tokens\nDimensions: 1536',
+    color: 'lavender',
+    nodeType: 'logo',
+    logoType: 'openai',
+  },
+  {
+    id: 'ai-vector-db',
+    name: 'Qdrant / Pinecone Vector Store',
+    role: 'ai',
+    category: 'AI Pipeline',
+    defaultTitle: 'Qdrant Vector DB',
+    defaultBody: 'HNSW Indexing\nMetric: Cosine Similarity\nTop-K retrieval: 5 chunks',
+    color: 'coral',
+    nodeType: 'logo',
+    logoType: 'qdrant',
+    shapeType: 'cylinder',
+  },
+  {
+    id: 'ai-llm-orchestrator',
+    name: 'LLM Orchestrator (Claude 3.5)',
+    role: 'ai',
+    category: 'AI Pipeline',
+    defaultTitle: 'Claude 3.5 Sonnet Reasoning',
+    defaultBody: 'System Prompt + Retrieved RAG Context\nTemperature: 0.2\nJSON Mode Output',
+    color: 'butter',
+    nodeType: 'logo',
+    logoType: 'claude',
+  },
+  {
+    id: 'ai-eval-metric',
+    name: 'Model Evaluation Metric',
+    role: 'ai',
+    category: 'Evaluation',
+    defaultTitle: 'RAG Triad Evaluation',
+    defaultBody: 'Context Relevance: 0.94\nAnswer Groundedness: 0.98\nLatency: 420ms',
+    color: 'mint',
+    nodeType: 'sign',
+    signType: 'launch',
+    stamp: 'APPROVED',
+  },
+
+  // --- UI/UX DESIGNERS ---
+  {
+    id: 'ux-wireframe-frame',
+    name: 'App Viewport / Canvas Frame',
+    role: 'design',
+    category: 'Wireframes',
+    defaultTitle: 'Workspace Viewport Frame',
+    defaultBody: 'Top navigation bar + Left tool palette + Central infinite canvas viewport.',
+    color: 'slate',
+    nodeType: 'shape_rectangle',
+    width: 340,
+    height: 220,
+  },
+  {
+    id: 'ux-sticky-feedback',
+    name: 'User Usability Feedback',
+    role: 'design',
+    category: 'Feedback',
+    defaultTitle: 'User Feedback: "Love the speed!"',
+    defaultBody: '"The drag resize and 1-click Netlify deploy makes sharing schemas 10x faster than Figma or Miro."',
+    color: 'butter',
+    nodeType: 'default',
+    stamp: 'HIGH IMPACT',
+  },
+  {
+    id: 'ux-design-token',
+    name: 'Design System Color Token',
+    role: 'design',
+    category: 'Design System',
+    defaultTitle: 'Primary Accent (#E24E1B)',
+    defaultBody: 'Warm Terracotta · RGB(226, 78, 27)\nUsed for primary buttons, active tool borders, and agent cursors.',
+    color: 'coral',
+    nodeType: 'default',
+  },
+
+  // --- BUSINESS, GROWTH & MARKETING ---
+  {
+    id: 'biz-funnel-step',
+    name: 'Acquisition Funnel Stage',
+    role: 'business',
+    category: 'Growth',
+    defaultTitle: 'Top of Funnel: WebMCP Docs & Demos',
+    defaultBody: 'Monthly Visitors: 25,000\nConversion to Canvas Launch: 18.4%\nAcquisition Cost: $0 (Open Source / SEO)',
+    color: 'mint',
+    nodeType: 'shape_rectangle',
+  },
+  {
+    id: 'biz-mrr-metric',
+    name: 'Revenue & ARR Target',
+    role: 'business',
+    category: 'Metrics',
+    defaultTitle: 'Target: $50k MRR Milestone',
+    defaultBody: '250 Pro Teams @ $199/mo\nExpansion revenue driven by multiplayer whiteboards.',
+    color: 'butter',
+    nodeType: 'sign',
+    signType: 'goal',
+    stamp: 'HIGH IMPACT',
+  },
+  {
+    id: 'biz-churn-alert',
+    name: 'Churn Risk Monitor',
+    role: 'business',
+    category: 'Retention',
+    defaultTitle: 'Early Warning: Inactive 14 Days',
+    defaultBody: 'Trigger automated onboarding email sequence & invite to live co-architecting session.',
+    color: 'coral',
+    nodeType: 'sign',
+    signType: 'warning',
+  },
+];

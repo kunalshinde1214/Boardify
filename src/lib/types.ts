@@ -13,12 +13,31 @@ export type NodeType =
   | 'sign'
   | 'logo'
   | 'heading'
-  | 'task';
+  | 'task'
+  | 'entity'
+  | 'table'
+  | 'shape'
+  | 'shape_rectangle'
+  | 'shape_circle'
+  | 'shape_diamond'
+  | 'shape_cylinder'
+  | 'shape_hexagon'
+  | 'shape_cloud';
 
 export interface TaskItem {
   id: string;
   text: string;
   done: boolean;
+}
+
+export interface EntityField {
+  id: string;
+  name: string;
+  type: string;
+  isPrimaryKey?: boolean;
+  isForeignKey?: boolean;
+  isNullable?: boolean;
+  foreignTable?: string;
 }
 
 export interface CanvasNode {
@@ -39,6 +58,9 @@ export interface CanvasNode {
   logoType?: string;
   stamp?: string;
   tasks?: TaskItem[];
+  fields?: EntityField[];
+  shapeType?: 'rectangle' | 'circle' | 'diamond' | 'cylinder' | 'hexagon' | 'cloud';
+  roleTag?: 'software' | 'product' | 'design' | 'ai' | 'business';
   fontSize?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   styleVariant?: 'sticky' | 'glass' | 'badge' | 'signpost' | 'banner' | 'clean' | 'neon';
 }
@@ -95,13 +117,26 @@ export interface ToolLogEntry {
   durationMs?: number;
 }
 
+export type TemplateCategory =
+  | 'All'
+  | 'AI & Agents'
+  | 'Cloud & Infra'
+  | 'Databases & ERD'
+  | 'Product & SaaS'
+  | 'Engineering'
+  | 'Strategy'
+  | 'Creative'
+  | 'Analysis';
+
 export interface BoardTemplate {
   id: string;
   title: string;
-  category: 'Strategy' | 'Engineering' | 'Product' | 'Creative' | 'Analysis';
+  category: 'Strategy' | 'Engineering' | 'Product' | 'Creative' | 'Analysis' | 'AI & Agents' | 'Databases & ERD' | 'Cloud & Infra' | 'Product & SaaS';
   description: string;
   badge?: string;
   suggestedPrompt: string;
+  stackIcons?: string[];
+  tags?: string[];
   nodes: Omit<CanvasNode, 'id' | 'created'>[];
   edges: { sourceIndex: number; targetIndex: number; label?: string }[];
 }

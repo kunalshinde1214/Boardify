@@ -8,8 +8,10 @@ import { TopToolbar } from '@/components/canvas/TopToolbar';
 import { AgentStudioDrawer } from '@/components/studio/AgentStudioDrawer';
 import { ExportModal } from '@/components/canvas/ExportModal';
 import { ShareDeployModal } from '@/components/canvas/ShareDeployModal';
+import { TemplatesModal } from '@/components/canvas/TemplatesModal';
 import { decodeCanvasShareState } from '@/lib/netlify-deploy';
 import { AVAILABLE_SIGNS, AVAILABLE_LOGOS } from '@/components/ui/BrandIcons';
+import { GILBARBARA_LOGOS } from '@/lib/all-logos-catalog';
 import {
   CanvasNode,
   CanvasEdge,
@@ -49,12 +51,15 @@ import {
   calculateTimelineTargets,
   calculateKanbanTargets,
   calculateForceDirectedTargets,
+  calculateDeOverlapTargets,
   analyzeBoardHealth,
 } from '@/lib/layouts';
 import { generateDynamicPlan } from '@/lib/llm-client';
 import { X, Layers, Copy, Check, ExternalLink, HelpCircle } from 'lucide-react';
 import { LogoSearchModal } from '@/components/canvas/LogoSearchModal';
 import { DiagramDslModal } from '@/components/canvas/DiagramDslModal';
+import { ProfessionAssetsModal } from '@/components/canvas/ProfessionAssetsModal';
+import { ProfessionAssetItem } from '@/lib/profession-assets';
 import { LeftToolPalette, CanvasToolType } from '@/components/canvas/LeftToolPalette';
 import { CanvasCheckpoint } from '@/lib/webmcp';
 
@@ -80,6 +85,7 @@ function CanvasAppInner() {
   const [isShareDeployOpen, setIsShareDeployOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDiagramDslOpen, setIsDiagramDslOpen] = useState(false);
+  const [isProfessionAssetsOpen, setIsProfessionAssetsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isLogoSearchOpen, setIsLogoSearchOpen] = useState(false);
   const [logoSearchCategory, setLogoSearchCategory] = useState('all');
@@ -190,7 +196,11 @@ function CanvasAppInner() {
         logoType?: string;
         stamp?: string;
         tasks?: TaskItem[];
+        fields?: any[];
+        shapeType?: 'rectangle' | 'circle' | 'diamond' | 'cylinder' | 'hexagon' | 'cloud';
+        roleTag?: 'software' | 'product' | 'ai' | 'design' | 'business';
         width?: number;
+        height?: number;
         fontSize?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
         styleVariant?: 'sticky' | 'glass' | 'badge' | 'signpost' | 'banner' | 'clean' | 'neon';
       }
@@ -214,12 +224,13 @@ function CanvasAppInner() {
         body,
         x: targetX,
         y: targetY,
-        width: nodeType === 'heading' ? 320 : 230,
+        width: extra?.width || (nodeType === 'heading' ? 320 : 230),
         color,
         author,
         created: Date.now(),
         rot: ((Math.random() * 6) - 3) * 0.6,
         nodeType,
+        ...(extra || {}),
       };
 
       setNodes(prev => [...prev, newNode]);
@@ -323,20 +334,61 @@ function CanvasAppInner() {
 
   const handleAddLogo = useCallback(
     (logoId: string) => {
-      const meta = AVAILABLE_LOGOS.find(l => l.id === logoId) || AVAILABLE_LOGOS[0];
+      // 1. Check AVAILABLE_LOGOS
+      const builtin = AVAILABLE_LOGOS.find(l => l.id.toLowerCase() === logoId.toLowerCase());
+      if (builtin) {
+        const c = getCentroid(nodesRef.current);
+        const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
+        handleAddNode(
+          free.x,
+          free.y,
+          'slate',
+          builtin.name,
+          builtin.defaultBody,
+          'human',
+          'logo',
+          { logoType: builtin.id }
+        );
+        showToast(`Added "${builtin.name}" vector logo icon`, 'ok');
+        return;
+      }
+
+      // 2. Check Gilbarbara catalog
+      const cleanId = logoId.replace(/^gil-/, '').toLowerCase();
+      const gil = GILBARBARA_LOGOS.find(
+        g => g.id.toLowerCase() === cleanId || `gil-${g.id.toLowerCase()}` === logoId.toLowerCase()
+      );
+      if (gil) {
+        const c = getCentroid(nodesRef.current);
+        const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
+        handleAddNode(
+          free.x,
+          free.y,
+          'slate',
+          gil.name,
+          `${gil.name} (${gil.cat})`,
+          'human',
+          'logo',
+          { logoType: `gil-${gil.id}` }
+        );
+        showToast(`Added "${gil.name}" vector logo icon`, 'ok');
+        return;
+      }
+
+      // 3. Fallback
       const c = getCentroid(nodesRef.current);
       const free = findFreeSpot(nodesRef.current, c.x + 240, c.y);
-      const newNode = handleAddNode(
+      handleAddNode(
         free.x,
         free.y,
         'slate',
-        meta.name,
-        meta.defaultBody,
+        logoId,
+        '',
         'human',
         'logo',
-        { logoType: meta.id }
+        { logoType: logoId }
       );
-      showToast(`Added "${meta.name}" vector logo icon`, 'ok');
+      showToast(`Added "${logoId}" logo`, 'ok');
     },
     [handleAddNode, showToast]
   );
@@ -349,15 +401,23 @@ function CanvasAppInner() {
 
   const handleSelectLogoFromSearch = useCallback(
     (logoId: string) => {
-      const meta = AVAILABLE_LOGOS.find(l => l.id === logoId) || AVAILABLE_LOGOS[0];
       if (logoSearchTargetNodeId) {
+        const builtin = AVAILABLE_LOGOS.find(l => l.id.toLowerCase() === logoId.toLowerCase());
+        const cleanId = logoId.replace(/^gil-/, '').toLowerCase();
+        const gil = GILBARBARA_LOGOS.find(
+          g => g.id.toLowerCase() === cleanId || `gil-${g.id.toLowerCase()}` === logoId.toLowerCase()
+        );
+        const name = builtin?.name || gil?.name || logoId;
+        const body = builtin?.defaultBody || (gil ? `${gil.name} (${gil.cat})` : '');
+        const finalLogoType = builtin ? builtin.id : gil ? `gil-${gil.id}` : logoId;
+
         handleUpdateNode(logoSearchTargetNodeId, {
-          logoType: meta.id,
+          logoType: finalLogoType,
           nodeType: 'logo',
-          title: meta.name,
-          body: meta.defaultBody,
+          title: name,
+          body,
         });
-        showToast(`Updated node logo to "${meta.name}"`, 'ok');
+        showToast(`Updated node logo to "${name}"`, 'ok');
       } else {
         handleAddLogo(logoId);
       }
@@ -515,6 +575,94 @@ function CanvasAppInner() {
     });
     showToast('Added Task Checklist', 'ok');
   }, [handleAddNode, handleUpdateNode, showToast]);
+
+  const handleAddEntityTable = useCallback(
+    (x?: number, y?: number, tableName = 'users') => {
+      const c = getCentroid(nodesRef.current);
+      const posX = x ?? Math.round(c.x + 240);
+      const posY = y ?? Math.round(c.y);
+      const free = x !== undefined && y !== undefined ? { x: posX, y: posY } : findFreeSpot(nodesRef.current, posX, posY, 260, 200);
+      const node = handleAddNode(
+        free.x,
+        free.y,
+        'slate',
+        tableName,
+        'Relational Entity Table',
+        'human',
+        'entity',
+        {
+          fields: [
+            { id: 'f1', name: 'id', type: 'UUID', isPrimaryKey: true },
+            { id: 'f2', name: 'email', type: 'VARCHAR(255)', isNullable: false },
+            { id: 'f3', name: 'created_at', type: 'TIMESTAMP' },
+          ],
+          width: 260,
+        }
+      );
+      showToast(`Added ER Table "${tableName}"`, 'ok');
+      return node;
+    },
+    [handleAddNode, showToast]
+  );
+
+  const handleAddShapeNode = useCallback(
+    (x?: number, y?: number, shapeType = 'diamond', name = 'Decision') => {
+      const c = getCentroid(nodesRef.current);
+      const posX = x ?? Math.round(c.x + 240);
+      const posY = y ?? Math.round(c.y);
+      const free = x !== undefined && y !== undefined ? { x: posX, y: posY } : findFreeSpot(nodesRef.current, posX, posY, 200, 140);
+      const nodeType = `shape_${shapeType}` as NodeType;
+      const colorMap: Record<string, NoteColor> = {
+        diamond: 'coral',
+        cylinder: 'slate',
+        hexagon: 'mint',
+        circle: 'lavender',
+        cloud: 'sage',
+        rectangle: 'butter',
+      };
+      const node = handleAddNode(
+        free.x,
+        free.y,
+        colorMap[shapeType] || 'butter',
+        name,
+        'Flowchart / Process Node',
+        'human',
+        nodeType,
+        { shapeType: shapeType as any, width: shapeType === 'diamond' ? 180 : 200 }
+      );
+      showToast(`Added ${name} Shape`, 'ok');
+      return node;
+    },
+    [handleAddNode, showToast]
+  );
+
+  const handleInsertProfessionAsset = useCallback(
+    (asset: ProfessionAssetItem) => {
+      const c = getCentroid(nodesRef.current);
+      const free = findFreeSpot(nodesRef.current, c.x + 240, c.y, asset.width || 230, asset.height || 160);
+      handleAddNode(
+        free.x,
+        free.y,
+        asset.color,
+        asset.defaultTitle,
+        asset.defaultBody,
+        'human',
+        asset.nodeType,
+        {
+          logoType: asset.logoType,
+          signType: asset.signType,
+          shapeType: asset.shapeType,
+          stamp: asset.stamp,
+          tasks: asset.tasks,
+          fields: asset.fields,
+          width: asset.width,
+          height: asset.height,
+        }
+      );
+      showToast(`Added "${asset.name}" asset`, 'ok');
+    },
+    [handleAddNode, showToast]
+  );
 
   const handleDeleteNode = useCallback(
     (id: string) => {
@@ -927,18 +1075,36 @@ function CanvasAppInner() {
     }
   };
 
-  const loadTemplate = (tmplId: string) => {
-    const tmpl = BOARD_TEMPLATES.find(t => t.id === tmplId);
-    if (!tmpl) return;
-    pushUndo();
-    const hydrated = createBoardFromTemplate(tmpl);
-    setNodes(hydrated.nodes);
-    setEdges(hydrated.edges);
-    setSeq(hydrated.seq);
-    setIsTemplatesOpen(false);
-    showToast(`Loaded "${tmpl.title}" template!`, 'ok');
-    setTimeout(() => fitView(true), 300);
-  };
+  const handleSelectTemplate = useCallback(
+    (tmplId: string, mode: 'replace' | 'insert' = 'replace') => {
+      const tmpl = BOARD_TEMPLATES.find(t => t.id === tmplId);
+      if (!tmpl) return;
+      pushUndo();
+
+      if (mode === 'insert' && nodesRef.current.length > 0) {
+        // Insert mode: calculate centroid and offset to free spot
+        const c = getCentroid(nodesRef.current);
+        const free = findFreeSpot(nodesRef.current, c.x + 400, c.y);
+        const offset = { x: free.x - (tmpl.nodes[0]?.x || 0), y: free.y - (tmpl.nodes[0]?.y || 0) };
+        const hydrated = createBoardFromTemplate(tmpl, offset);
+
+        setNodes(prev => [...prev, ...hydrated.nodes]);
+        setEdges(prev => [...prev, ...hydrated.edges]);
+        setSeq(prev => prev + hydrated.nodes.length + hydrated.edges.length);
+        showToast(`Inserted "${tmpl.title}" (${hydrated.nodes.length} nodes) into canvas!`, 'ok');
+      } else {
+        // Replace mode: clean board
+        const hydrated = createBoardFromTemplate(tmpl);
+        setNodes(hydrated.nodes);
+        setEdges(hydrated.edges);
+        setSeq(hydrated.seq);
+        showToast(`Loaded "${tmpl.title}" template!`, 'ok');
+        setTimeout(() => fitView(true), 300);
+      }
+      setIsTemplatesOpen(false);
+    },
+    [pushUndo, showToast, fitView]
+  );
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F4EFE4]">
@@ -953,6 +1119,7 @@ function CanvasAppInner() {
           onSelectTool={setActiveTool}
           onOpenLogoSearch={() => setIsLogoSearchOpen(true)}
           onOpenDiagramDsl={handleOpenDiagramDsl}
+          onOpenProfessionAssets={() => setIsProfessionAssetsOpen(true)}
           onToggleStudio={() => setIsStudioOpen(!isStudioOpen)}
           isStudioOpen={isStudioOpen}
           selectedCount={selectedNodeIds.length || (selectedNodeId ? 1 : 0)}
@@ -969,6 +1136,7 @@ function CanvasAppInner() {
           highlightedNodeId={highlightedNodeId}
           highlightReason={highlightReason}
           agentCursor={agentCursor}
+          isStudioOpen={isStudioOpen}
           onUpdateCamera={setCamera}
           onSelectNode={setSelectedNodeId}
           onSelectNodes={handleSelectNodes}
@@ -1004,6 +1172,8 @@ function CanvasAppInner() {
               }
             )
           }
+          onAddEntityTable={handleAddEntityTable}
+          onAddShapeNode={handleAddShapeNode}
           onDuplicateNode={handleDuplicateNode}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
@@ -1032,6 +1202,10 @@ function CanvasAppInner() {
           onSmartArrange={() => {
             animateLayout(calculateSmartFlowTargets(nodes, edges));
             showToast('Arranged into smart hierarchical flow', 'ok');
+          }}
+          onDeOverlap={() => {
+            animateLayout(calculateDeOverlapTargets(nodes));
+            showToast('De-overlapped & spaced out all canvas notes', 'ok');
           }}
           onTidyForceDirected={() => {
             animateLayout(calculateForceDirectedTargets(nodes, edges));
@@ -1103,6 +1277,15 @@ function CanvasAppInner() {
           currentEdges={edges}
         />
 
+        {/* Profession Assets & Roles Studio Modal */}
+        <ProfessionAssetsModal
+          isOpen={isProfessionAssetsOpen}
+          onClose={() => setIsProfessionAssetsOpen(false)}
+          onInsertAsset={handleInsertProfessionAsset}
+          onInsertShape={(shape, name) => handleAddShapeNode(undefined, undefined, shape, name)}
+          onInsertEntityTable={tableName => handleAddEntityTable(undefined, undefined, tableName)}
+        />
+
         {/* Export Modal */}
         <ExportModal
           isOpen={isExportOpen}
@@ -1122,60 +1305,12 @@ function CanvasAppInner() {
         />
       </main>
 
-      {/* Templates Drawer Modal */}
-      {isTemplatesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D1A16]/50 backdrop-blur-xs animate-note-pop">
-          <div className="bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-[6px_6px_0_#1D1A16] overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#DCD4C2] bg-[#F4EFE4]/60">
-              <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-[#E24E1B]" />
-                <h2 className="font-['Fraunces'] italic font-bold text-xl text-[#1D1A16]">
-                  Strategy & Architecture Templates
-                </h2>
-              </div>
-              <button
-                onClick={() => setIsTemplatesOpen(false)}
-                className="p-1.5 rounded-lg border border-[#1D1A16] bg-[#FFFDF6] hover:bg-[#F4EFE4]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {BOARD_TEMPLATES.map(t => (
-                <div
-                  key={t.id}
-                  className="p-4 rounded-xl border border-[#1D1A16] bg-[#FFFDF6] shadow-[3px_3px_0_#1D1A16] flex flex-col justify-between hover:bg-[#F4EFE4] transition-colors group"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-[#1D1A16] text-[#F4EFE4]">
-                        {t.category}
-                      </span>
-                      {t.badge && (
-                        <span className="text-[10px] font-bold text-[#E24E1B] bg-[#FFD8C7] px-2 py-0.5 rounded-full">
-                          {t.badge}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="font-bold text-sm text-[#1D1A16]">{t.title}</h3>
-                    <p className="text-xs text-[#6B6353] mt-1 line-clamp-2 leading-relaxed">
-                      {t.description}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => loadTemplate(t.id)}
-                    className="mt-4 w-full py-2 rounded-xl bg-[#1D1A16] text-white text-xs font-bold shadow-[2px_2px_0_#6B6353] hover:bg-[#E24E1B] transition-colors"
-                  >
-                    Load Template
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Architecture & Strategy Templates Modal */}
+      <TemplatesModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
+        onSelectTemplate={handleSelectTemplate}
+      />
 
       {/* Help Modal */}
       {isHelpOpen && (

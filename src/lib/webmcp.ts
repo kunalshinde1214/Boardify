@@ -5,6 +5,7 @@ import {
   calculateTimelineTargets,
   calculateKanbanTargets,
   calculateGridTargets,
+  calculateDeOverlapTargets,
   findFreeSpot,
   getCentroid,
   generateMarkdownExport,
@@ -2188,6 +2189,159 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
         scaledCount,
         scaleFactor,
         message: `Scaled ${scaledCount} note(s) by factor ${scaleFactor}x.`,
+      };
+    },
+  };
+
+  tools.deoverlap_canvas = {
+    name: 'deoverlap_canvas',
+    description: 'Runs elastic AABB collision resolution to push apart any overlapping notes on the canvas while preserving relative positioning.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        margin: { type: 'number', description: 'Separation margin in pixels (default 45).' },
+      },
+    },
+    run: input => {
+      const margin = typeof input.margin === 'number' ? input.margin : 45;
+      const nodes = actions.getNodes();
+      const targets = calculateDeOverlapTargets(nodes, margin);
+      actions.animateLayout(targets);
+      return {
+        success: true,
+        nodeCount: nodes.length,
+        message: `De-overlapped ${nodes.length} canvas nodes with ${margin}px safety margin.`,
+      };
+    },
+  };
+
+  tools.add_entity_table = {
+    name: 'add_entity_table',
+    description: 'Creates a relational database entity table card with schema columns, types (UUID, VARCHAR, INT, TIMESTAMP), and PK/FK keys.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        table_name: { type: 'string', description: 'Name of the database table (e.g. users, orders)' },
+        description: { type: 'string', description: 'Optional table description or notes' },
+        color: { type: 'string', enum: ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'] },
+        fields: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              type: { type: 'string' },
+              isPrimaryKey: { type: 'boolean' },
+              isForeignKey: { type: 'boolean' },
+              foreignTable: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+        x: { type: 'number' },
+        y: { type: 'number' },
+      },
+      required: ['table_name'],
+    },
+    run: input => {
+      const tableName = String(input.table_name || 'entity_table').trim();
+      const rawFields = Array.isArray(input.fields) ? input.fields : [];
+      const fields = rawFields.length > 0
+        ? rawFields.map((f: any, idx) => ({
+            id: `f_${idx + 1}`,
+            name: f.name || `column_${idx + 1}`,
+            type: f.type || 'VARCHAR(255)',
+            isPrimaryKey: !!f.isPrimaryKey,
+            isForeignKey: !!f.isForeignKey,
+            foreignTable: f.foreignTable,
+          }))
+        : [
+            { id: 'f1', name: 'id', type: 'UUID', isPrimaryKey: true },
+            { id: 'f2', name: 'created_at', type: 'TIMESTAMP' },
+          ];
+
+      const c = getCentroid(actions.getNodes());
+      const free = (typeof input.x === 'number' && typeof input.y === 'number')
+        ? { x: input.x, y: input.y }
+        : findFreeSpot(actions.getNodes(), c.x + 260, c.y, 260, 200);
+
+      const color = (input.color as NoteColor) || 'slate';
+      const node = actions.addNode({
+        title: tableName,
+        body: typeof input.description === 'string' ? input.description : 'Relational Entity Table',
+        color,
+        author: 'agent',
+        nodeType: 'entity',
+        x: free.x,
+        y: free.y,
+        width: 260,
+        fields,
+      });
+
+      return {
+        success: true,
+        nodeId: node.id,
+        tableName,
+        columnCount: fields.length,
+        message: `Created database entity table "${tableName}" with ${fields.length} columns.`,
+      };
+    },
+  };
+
+  tools.add_shape_node = {
+    name: 'add_shape_node',
+    description: 'Places a geometric shape node on the canvas (diamond decision, cylinder storage, hexagon microservice, circle state, cloud VPC, or process box).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shape_type: { type: 'string', enum: ['diamond', 'cylinder', 'hexagon', 'circle', 'cloud', 'rectangle'] },
+        title: { type: 'string', description: 'Headline / name for the shape' },
+        body: { type: 'string', description: 'Supporting details or logic' },
+        color: { type: 'string', enum: ['butter', 'sage', 'coral', 'slate', 'lavender', 'mint'] },
+        x: { type: 'number' },
+        y: { type: 'number' },
+      },
+      required: ['shape_type', 'title'],
+    },
+    run: input => {
+      const shapeType = String(input.shape_type || 'rectangle') as 'diamond' | 'cylinder' | 'hexagon' | 'circle' | 'cloud' | 'rectangle';
+      const nodeType = `shape_${shapeType}` as NodeType;
+      const title = String(input.title || shapeType).trim();
+      const body = typeof input.body === 'string' ? input.body : '';
+
+      const colorMap: Record<string, NoteColor> = {
+        diamond: 'coral',
+        cylinder: 'slate',
+        hexagon: 'mint',
+        circle: 'lavender',
+        cloud: 'sage',
+        rectangle: 'butter',
+      };
+      const color = (input.color as NoteColor) || colorMap[shapeType] || 'butter';
+
+      const c = getCentroid(actions.getNodes());
+      const free = (typeof input.x === 'number' && typeof input.y === 'number')
+        ? { x: input.x, y: input.y }
+        : findFreeSpot(actions.getNodes(), c.x + 240, c.y, 200, 140);
+
+      const node = actions.addNode({
+        title,
+        body,
+        color,
+        author: 'agent',
+        nodeType,
+        shapeType,
+        x: free.x,
+        y: free.y,
+        width: shapeType === 'diamond' ? 180 : 200,
+      });
+
+      return {
+        success: true,
+        nodeId: node.id,
+        shapeType,
+        title,
+        message: `Created ${shapeType} shape node "${title}".`,
       };
     },
   };

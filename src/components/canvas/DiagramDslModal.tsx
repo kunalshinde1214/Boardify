@@ -103,6 +103,55 @@ EventBus --- CriticalNotice
 `,
   },
   {
+    name: 'E-Commerce Database Schema (ERD)',
+    code: `// Relational Entity-Relationship Diagram
+direction: LR
+
+entity Users {
+  id UUID PK
+  email VARCHAR(255)
+  name VARCHAR(100)
+  created_at TIMESTAMP
+}
+
+entity Orders {
+  id UUID PK
+  user_id UUID FK
+  total_amount DECIMAL(10,2)
+  status VARCHAR(32)
+  created_at TIMESTAMP
+}
+
+entity OrderItems {
+  id UUID PK
+  order_id UUID FK
+  product_id UUID FK
+  quantity INT
+  unit_price DECIMAL(10,2)
+}
+
+entity Products {
+  id UUID PK
+  category_id UUID FK
+  sku VARCHAR(64)
+  title VARCHAR(255)
+  price DECIMAL(10,2)
+}
+
+entity Payments {
+  id UUID PK
+  order_id UUID FK
+  stripe_charge_id VARCHAR(128)
+  status VARCHAR(32)
+}
+
+Users ||--o{ Orders : "places (1:N)"
+Orders ||--o{ OrderItems : "contains (1:N)"
+Products ||--o{ OrderItems : "ordered in (1:N)"
+Orders ||--|| Payments : "settles (1:1)"
+`,
+  },
+  {
     name: 'Mermaid Flowchart Syntax',
     code: `graph LR
   Frontend[Next.js Client: nextjs] --> Gateway[API Gateway: aws-api-gateway]

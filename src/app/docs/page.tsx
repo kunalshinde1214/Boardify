@@ -210,6 +210,48 @@ function DocsPageInner() {
       sampleInput: '{\n  "format": "svg"\n}',
       sampleOutput: '{\n  "success": true,\n  "format": "svg",\n  "data_url": "data:image/svg+xml;base64,..."\n}',
     },
+    {
+      name: 'add_entity_table',
+      description: 'Creates a relational database entity table card with schema columns, types, and PK/FK indicators.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table_name: { type: 'string' },
+          description: { type: 'string' },
+          fields: { type: 'array' },
+        },
+        required: ['table_name'],
+      },
+      sampleInput: '{\n  "table_name": "users",\n  "description": "User accounts table",\n  "fields": [\n    { "name": "id", "type": "UUID", "isPrimaryKey": true },\n    { "name": "email", "type": "VARCHAR(255)" },\n    { "name": "created_at", "type": "TIMESTAMP" }\n  ]\n}',
+      sampleOutput: '{\n  "success": true,\n  "nodeId": "node_erd_123",\n  "tableName": "users",\n  "columnCount": 3,\n  "message": "Created database entity table \'users\' with 3 columns."\n}',
+    },
+    {
+      name: 'add_shape_node',
+      description: 'Places a geometric shape node (diamond, cylinder, hexagon, circle, cloud, or rectangle) on the canvas.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          shape_type: { type: 'string', enum: ['diamond', 'cylinder', 'hexagon', 'circle', 'cloud', 'rectangle'] },
+          title: { type: 'string' },
+          body: { type: 'string' },
+        },
+        required: ['shape_type', 'title'],
+      },
+      sampleInput: '{\n  "shape_type": "diamond",\n  "title": "Is User Authenticated?",\n  "body": "Check JWT token expiration and HMAC signature"\n}',
+      sampleOutput: '{\n  "success": true,\n  "nodeId": "node_shape_456",\n  "shapeType": "diamond",\n  "title": "Is User Authenticated?",\n  "message": "Created diamond shape node \'Is User Authenticated?\'."\n}',
+    },
+    {
+      name: 'deoverlap_canvas',
+      description: 'Runs elastic AABB collision physics to push apart overlapping canvas nodes while preserving the layout geometry.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          margin: { type: 'number' },
+        },
+      },
+      sampleInput: '{\n  "margin": 45\n}',
+      sampleOutput: '{\n  "success": true,\n  "nodeCount": 14,\n  "message": "De-overlapped 14 canvas nodes with 45px safety margin."\n}',
+    },
   ];
 
   const currentTool = toolDocs[selectedToolIndex];

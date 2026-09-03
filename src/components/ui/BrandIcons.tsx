@@ -1039,21 +1039,53 @@ export const AVAILABLE_STAMPS = [
 ];
 
 export function resolveBrandOrSignIcon(query: string): React.ComponentType<IconProps> | null {
-  const q = query.toLowerCase();
-  
-  // 1. Check signs
-  for (const s of AVAILABLE_SIGNS) {
-    if (q.includes(s.id) || q.includes(s.name.toLowerCase())) return s.icon;
-  }
-  
-  // 2. Check logos
-  for (const l of AVAILABLE_LOGOS) {
-    if (q.includes(l.id) || q.includes(l.name.toLowerCase())) return l.icon;
+  if (!query) return null;
+  const rawQ = query.trim();
+  const q = rawQ.toLowerCase();
+  const cleanQ = q.replace(/^gil-/, '');
+
+  // 1. Check exact ID or Name in AVAILABLE_LOGOS first (highest priority)
+  const exactLogo = AVAILABLE_LOGOS.find(
+    l => l.id.toLowerCase() === q || l.name.toLowerCase() === q || l.id.toLowerCase() === cleanQ
+  );
+  if (exactLogo) return exactLogo.icon;
+
+  // 2. Check Gilbarbara 1,876 Logos catalog (by ID, file, or exact name)
+  const gilMatch = GILBARBARA_LOGOS.find(
+    g => g.id.toLowerCase() === cleanQ ||
+         g.file.toLowerCase() === cleanQ ||
+         g.file.replace('.svg', '').toLowerCase() === cleanQ ||
+         g.name.toLowerCase() === cleanQ
+  );
+  if (gilMatch) {
+    return (props: IconProps) => (
+      <DynamicGilbarbaraIcon file={gilMatch.file} size={props.size || 24} className={props.className} />
+    );
   }
 
-  // 3. Fallbacks
-  if (q.includes('s3')) return AWSS3Icon;
+  // 3. Specific known technology names & aliases (Prioritize logos over signs)
+  if (q.includes('vscode') || q.includes('vs code') || q.includes('visual studio code')) return VSCodeIcon;
+  if (q.includes('react')) return ReactIcon;
+  if (q.includes('next.js') || q.includes('nextjs')) return NextjsIcon;
+  if (q.includes('tailwind')) return TailwindIcon;
+  if (q.includes('typescript') || q === 'ts') return TypeScriptIcon;
+  if (q.includes('javascript') || q === 'js') return JavaScriptIcon;
+  if (q.includes('python')) return PythonIcon;
+  if (q.includes('rust')) return RustIcon;
+  if (q.includes('golang') || q === 'go') return GoIcon;
+  if (q.includes('node')) return NodeJsIcon;
+  if (q.includes('bun')) return BunJsIcon;
+  if (q.includes('deno')) return DenoIcon;
+  if (q.includes('graphql')) return GraphQLIcon;
+  if (q.includes('postgres') || q.includes('postgresql') || q.includes('psql')) return PostgreSQLIcon;
+  if (q.includes('mysql')) return MySQLIcon;
+  if (q.includes('redis')) return RedisIcon;
+  if (q.includes('mongo')) return MongoDBIcon;
+  if (q.includes('docker') || q.includes('container')) return DockerIcon;
+  if (q.includes('kubernetes') || q.includes('k8s')) return KubernetesIcon;
+  if (q.includes('aws') || q.includes('amazon')) return AWSIcon;
   if (q.includes('lambda')) return AWSLambdaIcon;
+  if (q.includes('s3')) return AWSS3Icon;
   if (q.includes('dynamodb')) return AWSDynamoDBIcon;
   if (q.includes('rds')) return AWSRDSIcon;
   if (q.includes('cloudfront')) return AWSCloudFrontIcon;
@@ -1064,135 +1096,73 @@ export function resolveBrandOrSignIcon(query: string): React.ComponentType<IconP
   if (q.includes('api gateway')) return AWSAPIGatewayIcon;
   if (q.includes('iam')) return AWSIAMIcon;
   if (q.includes('bedrock')) return AWSBedrockIcon;
-  if (q.includes('chroma')) return ChromaDBIcon;
-  if (q.includes('qdrant')) return QdrantIcon;
-  if (q.includes('ollama')) return OllamaIcon;
-  if (q.includes('groq')) return GroqIcon;
-  if (q.includes('mistral')) return MistralAIIcon;
-  if (q.includes('perplexity')) return PerplexityIcon;
-  if (q.includes('stripe') || q.includes('billing')) return StripeIcon;
-  if (q.includes('sentry')) return SentryIcon;
-  if (q.includes('twilio')) return TwilioIcon;
-  if (q.includes('pinecone')) return PineconeIcon;
-  if (q.includes('weaviate')) return WeaviateIcon;
-  if (q.includes('langchain')) return LangChainIcon;
-  if (q.includes('zapier')) return ZapierIcon;
-  if (q.includes('airtable')) return AirtableIcon;
-  if (q.includes('segment')) return SegmentIcon;
-  if (q.includes('mixpanel')) return MixpanelIcon;
-  if (q.includes('intercom')) return IntercomIcon;
-  if (q.includes('loom')) return LoomIcon;
-  if (q.includes('upstash')) return UpstashIcon;
-  if (q.includes('turborepo') || q.includes('turbo')) return TurborepoIcon;
-  if (q.includes('okta')) return OktaIcon;
-  if (q.includes('netlify')) return NetlifyIcon;
-  if (q.includes('aws') || q.includes('amazon')) return AWSIcon;
   if (q.includes('gcp') || q.includes('google cloud')) return GoogleCloudIcon;
   if (q.includes('azure')) return AzureIcon;
   if (q.includes('cloudflare')) return CloudflareIcon;
-  if (q.includes('react')) return ReactIcon;
-  if (q.includes('tailwind')) return TailwindIcon;
-  if (q.includes('openai') || q.includes('gpt') || q.includes('chatgpt')) return OpenAIIcon;
+  if (q.includes('stripe')) return StripeIcon;
+  if (q.includes('openai') || q.includes('chatgpt') || q.includes('gpt')) return OpenAIIcon;
   if (q.includes('gemini')) return GeminiIcon;
   if (q.includes('claude') || q.includes('anthropic')) return AnthropicIcon;
   if (q.includes('deepseek')) return DeepSeekIcon;
   if (q.includes('copilot')) return CopilotIcon;
-  if (q.includes('firebase') || q.includes('firestore')) return FirebaseIcon;
+  if (q.includes('qdrant')) return QdrantIcon;
+  if (q.includes('pinecone')) return PineconeIcon;
+  if (q.includes('weaviate')) return WeaviateIcon;
+  if (q.includes('chroma')) return ChromaDBIcon;
+  if (q.includes('ollama')) return OllamaIcon;
+  if (q.includes('groq')) return GroqIcon;
+  if (q.includes('mistral')) return MistralAIIcon;
+  if (q.includes('perplexity')) return PerplexityIcon;
   if (q.includes('github')) return GitHubIcon;
   if (q.includes('gitlab')) return GitLabIcon;
-  if (q.includes('next.js') || q.includes('nextjs')) return NextjsIcon;
-  if (q.includes('postgres') || q.includes('postgresql') || q.includes('sql')) return PostgreSQLIcon;
-  if (q.includes('mysql')) return MySQLIcon;
-  if (q.includes('mongo')) return MongoDBIcon;
-  if (q.includes('redis')) return RedisIcon;
-  if (q.includes('docker') || q.includes('container')) return DockerIcon;
-  if (q.includes('kubernetes') || q.includes('k8s')) return KubernetesIcon;
-  if (q.includes('python')) return PythonIcon;
-  if (q.includes('rust')) return RustIcon;
-  if (q.includes('golang') || q.includes('go')) return GoIcon;
-  if (q.includes('typescript') || q.includes('ts')) return TypeScriptIcon;
-  if (q.includes('javascript') || q.includes('js')) return JavaScriptIcon;
-  if (q.includes('node')) return NodeJsIcon;
-  if (q.includes('bun')) return BunJsIcon;
-  if (q.includes('deno')) return DenoIcon;
-  if (q.includes('graphql')) return GraphQLIcon;
-  if (q.includes('trpc')) return TRPCIcon;
-  if (q.includes('fastapi')) return FastAPIIcon;
-  if (q.includes('django')) return DjangoIcon;
-  if (q.includes('nestjs')) return NestJSIcon;
-  if (q.includes('express')) return ExpressJsIcon;
-  if (q.includes('slack')) return SlackIcon;
-  if (q.includes('discord')) return DiscordIcon;
-  if (q.includes('figma')) return FigmaIcon;
   if (q.includes('linear')) return LinearIcon;
   if (q.includes('notion')) return NotionIcon;
-  if (q.includes('auth0')) return Auth0Icon;
-  if (q.includes('vercel')) return VercelIcon;
-  if (q.includes('supabase')) return SupabaseIcon;
-  if (q.includes('convex')) return ConvexIcon;
-  if (q.includes('prisma')) return PrismaIcon;
-  if (q.includes('shadcn')) return ShadcnUIIcon;
-  if (q.includes('astro')) return AstroIcon;
-  if (q.includes('svelte')) return SvelteJSIcon;
-  if (q.includes('vue')) return VueJsIcon;
-  if (q.includes('angular')) return AngularIcon;
-  if (q.includes('flutter')) return FlutterIcon;
-  if (q.includes('kotlin')) return KotlinIcon;
-  if (q.includes('swift')) return SwiftIcon;
-  if (q.includes('java')) return JavaIcon;
-  if (q.includes('c++') || q.includes('cpp')) return CPlusPlusIcon;
-  if (q.includes('c#') || q.includes('csharp')) return CSharpIcon;
-  if (q.includes('solidity')) return SolidityIcon;
-  if (q.includes('terraform')) return TerraformIcon;
-  if (q.includes('kafka')) return KafkaIcon;
-  if (q.includes('elastic')) return ElasticIcon;
-  if (q.includes('linux')) return LinuxIcon;
-  if (q.includes('n8n')) return N8nIcon;
+  if (q.includes('figma')) return FigmaIcon;
+  if (q.includes('slack')) return SlackIcon;
+  if (q.includes('discord')) return DiscordIcon;
   if (q.includes('posthog')) return PostHogIcon;
+  if (q.includes('datadog')) return DatadogIcon;
+  if (q.includes('sentry')) return SentryIcon;
+  if (q.includes('grafana')) return GrafanaIcon;
+  if (q.includes('supabase')) return SupabaseIcon;
+  if (q.includes('firebase')) return FirebaseIcon;
+  if (q.includes('prisma')) return PrismaIcon;
+  if (q.includes('clerk')) return ClerkIcon;
+  if (q.includes('auth0')) return Auth0Icon;
+  if (q.includes('webmcp')) return WebMCPIcon;
+  if (q.includes('netlify')) return NetlifyIcon;
+  if (q.includes('vercel')) return VercelIcon;
   if (q.includes('postman')) return PostmanIcon;
   if (q.includes('insomnia')) return InsomniaIcon;
   if (q.includes('playwright')) return PlaywrightIcon;
   if (q.includes('cypress')) return CypressIcon;
   if (q.includes('jest')) return JestIcon;
   if (q.includes('storybook')) return StorybookIcon;
-  if (q.includes('railway')) return RailwayIcon;
-  if (q.includes('render')) return RenderIcon;
-  if (q.includes('fly.io') || q.includes('flyio')) return FlyIoIcon;
-  if (q.includes('digitalocean')) return DigitalOceanIcon;
-  if (q.includes('heroku')) return HerokuIcon;
-  if (q.includes('appwrite')) return AppwriteIcon;
-  if (q.includes('huggingface') || q.includes('hugging face')) return HuggingFaceIcon;
-  if (q.includes('resend')) return ResendIcon;
-  if (q.includes('vscode')) return VSCodeIcon;
-  if (q.includes('clerk')) return ClerkIcon;
-  if (q.includes('datadog')) return DatadogIcon;
-  if (q.includes('grafana')) return GrafanaIcon;
-  if (q.includes('webmcp')) return WebMCPIcon;
-  if (q.includes('warn') || q.includes('hazard')) return WarningSignIcon;
-  if (q.includes('stop') || q.includes('block')) return StopSignIcon;
-  if (q.includes('launch') || q.includes('ship')) return LaunchSignIcon;
-  if (q.includes('goal') || q.includes('target')) return GoalSignIcon;
-  if (q.includes('idea') || q.includes('bulb')) return IdeaSignIcon;
-  if (q.includes('bug') || q.includes('defect')) return BugSignIcon;
-  if (q.includes('hotfix') || q.includes('fire') || q.includes('flame')) return FlameHotfixSignIcon;
-  if (q.includes('milestone') || q.includes('flag')) return MilestoneSignIcon;
-  if (q.includes('cone') || q.includes('traffic')) return TrafficConeSignIcon;
-  if (q.includes('health') || q.includes('pulse') || q.includes('heartbeat')) return HeartbeatSignIcon;
-  if (q.includes('secret') || q.includes('key')) return KeySecretSignIcon;
-  if (q.includes('compass') || q.includes('north')) return CompassSignIcon;
-  if (q.includes('bell') || q.includes('alert')) return BellAlertSignIcon;
-  if (q.includes('branch') || q.includes('git')) return GitBranchSignIcon;
-  if (q.includes('coffee') || q.includes('retro')) return CoffeeBreakSignIcon;
-  if (q.includes('lock') || q.includes('vault')) return LockSignIcon;
 
-  // Check 1,876 Gilbarbara Logos catalog
-  const cleanQ = q.replace(/^gil-/, '');
-  const gilMatch = GILBARBARA_LOGOS.find(
-    g => g.id === cleanQ || g.file === cleanQ || g.file.replace('.svg', '') === cleanQ || g.name.toLowerCase() === cleanQ
+  // 4. Check exact sign IDs or explicit "sign:" prefix
+  const exactSign = AVAILABLE_SIGNS.find(
+    s => s.id.toLowerCase() === q || s.name.toLowerCase() === q || `sign:${s.id.toLowerCase()}` === q
   );
-  if (gilMatch) {
+  if (exactSign) return exactSign.icon;
+
+  // 5. Sign fallback ONLY on whole-word or explicit sign query (avoid matching "bug" in "debugging")
+  const words = q.split(/[\s_\-:,.]+/).filter(Boolean);
+  for (const s of AVAILABLE_SIGNS) {
+    if (words.includes(s.id.toLowerCase())) return s.icon;
+  }
+
+  // 6. Partial match in AVAILABLE_LOGOS
+  for (const l of AVAILABLE_LOGOS) {
+    if (q.includes(l.id.toLowerCase()) || q.includes(l.name.toLowerCase())) return l.icon;
+  }
+
+  // 7. Partial match in Gilbarbara catalog
+  const partialGil = GILBARBARA_LOGOS.find(
+    g => g.id.toLowerCase().includes(cleanQ) || g.name.toLowerCase().includes(cleanQ)
+  );
+  if (partialGil) {
     return (props: IconProps) => (
-      <DynamicGilbarbaraIcon file={gilMatch.file} size={props.size || 24} className={props.className} />
+      <DynamicGilbarbaraIcon file={partialGil.file} size={props.size || 24} className={props.className} />
     );
   }
 

@@ -399,6 +399,79 @@ export function calculateGridTargets(nodes: CanvasNode[]): Map<string, { x: numb
   return targets;
 }
 
+/**
+ * Iterative AABB Collision Resolution & Elastic Repulsion.
+ * Scans all notes, detects bounding box intersections with margins,
+ * and pushes overlapping notes apart along the minimum separation vector
+ * while preserving overall diagram arrangement.
+ */
+export function calculateDeOverlapTargets(
+  nodes: CanvasNode[],
+  margin = 45
+): Map<string, { x: number; y: number }> {
+  const targets = new Map<string, { x: number; y: number }>();
+  if (nodes.length === 0) return targets;
+
+  // Initialize with current positions
+  const posMap = nodes.map(n => ({
+    id: n.id,
+    x: n.x,
+    y: n.y,
+    w: n.width || 230,
+    h: n.height || 160,
+  }));
+
+  const iterations = 40;
+  for (let iter = 0; iter < iterations; iter++) {
+    let hasOverlap = false;
+
+    for (let i = 0; i < posMap.length; i++) {
+      for (let j = i + 1; j < posMap.length; j++) {
+        const a = posMap[i];
+        const b = posMap[j];
+
+        const cxA = a.x + a.w / 2;
+        const cyA = a.y + a.h / 2;
+        const cxB = b.x + b.w / 2;
+        const cyB = b.y + b.h / 2;
+
+        const dx = cxB - cxA;
+        const dy = cyB - cyA;
+
+        const requiredDistX = (a.w + b.w) / 2 + margin;
+        const requiredDistY = (a.h + b.h) / 2 + margin;
+
+        const overlapX = requiredDistX - Math.abs(dx);
+        const overlapY = requiredDistY - Math.abs(dy);
+
+        if (overlapX > 0 && overlapY > 0) {
+          hasOverlap = true;
+          // Resolve along the axis of minimum penetration
+          if (overlapX < overlapY) {
+            const push = overlapX / 2 + 4;
+            const sign = dx >= 0 ? 1 : -1;
+            b.x += push * sign;
+            a.x -= push * sign;
+          } else {
+            const push = overlapY / 2 + 4;
+            const sign = dy >= 0 ? 1 : -1;
+            b.y += push * sign;
+            a.y -= push * sign;
+          }
+        }
+      }
+    }
+
+    if (!hasOverlap) break;
+  }
+
+  posMap.forEach(item => {
+    targets.set(item.id, { x: Math.round(item.x), y: Math.round(item.y) });
+  });
+
+  return targets;
+}
+
 export function generateMarkdownExport(nodes: CanvasNode[], edges: CanvasEdge[]): string {
   const lines = ['# Boardify Canvas Export', '', `Exported at: ${new Date().toISOString()}`, ''];
   const comps = getConnectedComponents(nodes, edges);

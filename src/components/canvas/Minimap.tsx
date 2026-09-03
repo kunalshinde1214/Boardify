@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { CanvasNode, CanvasCamera } from '@/lib/types';
 import { getBoundingBox } from '@/lib/layouts';
-import { MapPin } from 'lucide-react';
+import { MapPin, Minimize2, Maximize2 } from 'lucide-react';
 
 interface MinimapProps {
   nodes: CanvasNode[];
@@ -11,6 +11,7 @@ interface MinimapProps {
   viewportWidth: number;
   viewportHeight: number;
   onNavigate: (x: number, y: number) => void;
+  isStudioOpen?: boolean;
 }
 
 const MINIMAP_WIDTH = 160;
@@ -22,7 +23,10 @@ export function Minimap({
   viewportWidth,
   viewportHeight,
   onNavigate,
+  isStudioOpen = false,
 }: MinimapProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   const seenNodeIds = new Set<string>();
   const uniqueNodes = nodes.filter(n => {
     if (!n || !n.id || seenNodeIds.has(n.id)) return false;
@@ -65,13 +69,45 @@ export function Minimap({
     onNavigate(targetWorldX, targetWorldY);
   };
 
+  const offsetClass = isStudioOpen ? 'right-84 sm:right-[404px]' : 'right-4';
+
+  if (isCollapsed) {
+    return (
+      <button
+        onClick={() => setIsCollapsed(false)}
+        className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl shadow-[3px_3px_0_#1D1A16] hover:bg-[#F4EFE4] hover:-translate-y-0.5 text-xs font-bold text-[#1D1A16] transition-all duration-300 cursor-pointer absolute bottom-4 z-40 ${offsetClass}`}
+        title="Expand Radar Minimap"
+      >
+        <MapPin className="w-3.5 h-3.5 text-[#E24E1B]" />
+        <span className="font-mono text-[11px] font-bold">RADAR</span>
+        <span className="font-mono text-[10px] text-[#6B6353] bg-[#1D1A16]/5 px-1.5 py-0.5 rounded">
+          {Math.round(camera.z * 100)}%
+        </span>
+        <Maximize2 className="w-3 h-3 text-[#6B6353] ml-0.5" />
+      </button>
+    );
+  }
+
   return (
-    <div className="hidden sm:block absolute bottom-4 left-4 z-40 bg-[#FFFDF6] border border-[#1D1A16] rounded-xl p-2 shadow-[3px_3px_0_#1D1A16]">
+    <div
+      className={`hidden sm:block absolute bottom-4 z-40 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl p-2 shadow-[3px_3px_0_#1D1A16] transition-all duration-300 ${offsetClass}`}
+    >
       <div className="flex items-center justify-between text-[10px] font-bold text-[#6B6353] pb-1.5 px-0.5">
-        <span className="flex items-center gap-1 font-mono uppercase tracking-wider">
+        <span className="flex items-center gap-1 font-mono uppercase tracking-wider text-[#1D1A16]">
           <MapPin className="w-3 h-3 text-[#E24E1B]" /> Radar
         </span>
-        <span className="font-mono text-[9px]">{Math.round(camera.z * 100)}%</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[9px] bg-[#1D1A16]/5 px-1.5 py-0.5 rounded text-[#1D1A16]">
+            {Math.round(camera.z * 100)}%
+          </span>
+          <button
+            onClick={() => setIsCollapsed(true)}
+            className="p-1 hover:bg-[#1D1A16]/10 rounded cursor-pointer transition-colors text-[#6B6353] hover:text-[#1D1A16]"
+            title="Minimize Radar"
+          >
+            <Minimize2 className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       <div

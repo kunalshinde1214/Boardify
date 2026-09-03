@@ -15,6 +15,11 @@ import {
   Bot,
   Wrench,
   Database,
+  Table2,
+  Key,
+  Diamond,
+  Hexagon,
+  Circle,
   Network,
   Cloud,
   ShieldCheck,
@@ -31,8 +36,10 @@ import {
   AVAILABLE_LOGOS,
   AVAILABLE_SIGNS,
   AVAILABLE_STAMPS,
+  DynamicGilbarbaraIcon,
   resolveBrandOrSignIcon,
 } from '@/components/ui/BrandIcons';
+import { GILBARBARA_LOGOS } from '@/lib/all-logos-catalog';
 
 const COLOR_MAP: Record<NoteColor, string> = {
   butter: '#FFE9A8',
@@ -172,8 +179,14 @@ export function StickyNote({
 
   // Resolve matching Sign or Logo metadata
   const currentSign = AVAILABLE_SIGNS.find(s => s.id === node.signType);
-  const currentLogo = AVAILABLE_LOGOS.find(l => l.id === node.logoType);
-  const fallbackIcon = resolveBrandOrSignIcon(node.title + ' ' + (node.body || ''));
+  const currentLogo = AVAILABLE_LOGOS.find(
+    l => l.id.toLowerCase() === (node.logoType || '').toLowerCase()
+  );
+  const cleanGilId = (node.logoType || '').replace(/^gil-/, '').toLowerCase();
+  const currentGilLogo = GILBARBARA_LOGOS.find(
+    g => g.id.toLowerCase() === cleanGilId || `gil-${g.id.toLowerCase()}` === (node.logoType || '').toLowerCase()
+  );
+  const fallbackIcon = resolveBrandOrSignIcon(node.logoType || node.title);
 
   // 1. RENDER HEADING / BANNER
   if (node.nodeType === 'heading') {
@@ -238,6 +251,363 @@ export function StickyNote({
             node={node}
             onResizeStart={onResizeStart}
             width={headingWidth}
+          />
+        )}
+
+        {/* Selection Toolbar */}
+        {isSelected && (
+          <SelectionActionToolbar
+            node={node}
+            activeMenu={activeMenu}
+            setActiveMenu={setActiveMenu}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onDuplicate={onDuplicate}
+            onStartEditBody={() => setIsEditingBody(true)}
+            onOpenLogoSearch={onOpenLogoSearch}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // 1.5 RENDER ER DIAGRAM ENTITY TABLE NODE
+  if (node.nodeType === 'entity' || node.nodeType === 'table') {
+    const tableWidth = Math.max(220, node.width || 260);
+    const fields = node.fields || [
+      { id: 'f1', name: 'id', type: 'UUID', isPrimaryKey: true },
+      { id: 'f2', name: 'created_at', type: 'TIMESTAMP' },
+    ];
+
+    const handleTogglePrimaryKey = (fieldId: string) => {
+      const updated = fields.map(f =>
+        f.id === fieldId ? { ...f, isPrimaryKey: !f.isPrimaryKey, isForeignKey: false } : f
+      );
+      onUpdate(node.id, { fields: updated });
+    };
+
+    const handleToggleForeignKey = (fieldId: string) => {
+      const updated = fields.map(f =>
+        f.id === fieldId ? { ...f, isForeignKey: !f.isForeignKey, isPrimaryKey: false } : f
+      );
+      onUpdate(node.id, { fields: updated });
+    };
+
+    const handleUpdateFieldName = (fieldId: string, name: string) => {
+      const updated = fields.map(f => (f.id === fieldId ? { ...f, name } : f));
+      onUpdate(node.id, { fields: updated });
+    };
+
+    const handleCycleFieldType = (fieldId: string) => {
+      const types = ['UUID', 'VARCHAR(255)', 'INT', 'BIGINT', 'BOOLEAN', 'TIMESTAMP', 'JSONB', 'DECIMAL(10,2)', 'TEXT'];
+      const current = fields.find(f => f.id === fieldId)?.type || 'VARCHAR';
+      const nextIdx = (types.findIndex(t => t.startsWith(current.split('(')[0])) + 1) % types.length;
+      const updated = fields.map(f => (f.id === fieldId ? { ...f, type: types[nextIdx] } : f));
+      onUpdate(node.id, { fields: updated });
+    };
+
+    const handleAddField = () => {
+      const newField = {
+        id: `f_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
+        name: `column_${fields.length + 1}`,
+        type: 'VARCHAR(255)',
+      };
+      onUpdate(node.id, { fields: [...fields, newField] });
+    };
+
+    const handleDeleteField = (fieldId: string) => {
+      onUpdate(node.id, { fields: fields.filter(f => f.id !== fieldId) });
+    };
+
+    return (
+      <div
+        data-node-id={node.id}
+        style={{
+          transform: `translate(${node.x}px, ${node.y}px) rotate(${rotation}deg)`,
+          width: `${tableWidth}px`,
+          backgroundColor: '#FFFDF6',
+        }}
+        onPointerDown={e => {
+          if ((e.target as HTMLElement).closest('.ignore-drag')) return;
+          onSelect(node.id);
+          onDragStart(e, node);
+        }}
+        className={`absolute select-none cursor-grab active:cursor-grabbing rounded-xl overflow-hidden border-2 border-[#1D1A16] shadow-[4px_4px_0_#1D1A16] transition-all group ${
+          isSelected ? 'ring-2 ring-[#E24E1B] ring-offset-2 z-20 shadow-[6px_6px_0_#E24E1B]' : 'z-10'
+        } ${isHighlighted ? 'ring-4 ring-[#E24E1B] animate-bounce z-30' : ''}`}
+      >
+        {/* Table Header */}
+        <div
+          className="px-3.5 py-2.5 border-b-2 border-[#1D1A16] flex items-center justify-between gap-2"
+          style={{ backgroundColor: bgHex }}
+        >
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <Table2 className="w-4 h-4 text-[#1D1A16] shrink-0" />
+            {isEditingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={titleValue}
+                onChange={e => setTitleValue(e.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitTitle();
+                  if (e.key === 'Escape') setIsEditingTitle(false);
+                }}
+                className="ignore-drag font-mono font-bold text-sm text-[#1D1A16] bg-transparent outline-none border-b border-[#1D1A16] w-full"
+              />
+            ) : (
+              <span
+                onDoubleClick={e => {
+                  e.stopPropagation();
+                  setIsEditingTitle(true);
+                }}
+                className="font-mono font-extrabold text-sm text-[#1D1A16] truncate cursor-text"
+                title="Double click to rename table"
+              >
+                {node.title || 'entity_table'}
+              </span>
+            )}
+          </div>
+          <span className="text-[9px] font-mono font-bold bg-[#1D1A16] text-[#FFFDF6] px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+            TABLE
+          </span>
+        </div>
+
+        {/* Optional Table Description */}
+        {node.body && (
+          <div className="px-3 py-1.5 bg-[#F4EFE4]/60 border-b border-[#DCD4C2] text-[10px] text-[#6B6353] font-['Space_Grotesk'] leading-tight">
+            {node.body}
+          </div>
+        )}
+
+        {/* Columns Table */}
+        <div className="divide-y divide-[#DCD4C2]/60 font-mono text-xs">
+          {fields.map((f, idx) => (
+            <div
+              key={f.id || idx}
+              className="flex items-center justify-between px-3 py-1.5 hover:bg-[#F4EFE4]/80 group/row transition-colors"
+            >
+              {/* Key Badge (PK / FK / None) */}
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (f.isPrimaryKey) handleToggleForeignKey(f.id);
+                    else if (f.isForeignKey) handleToggleForeignKey(f.id);
+                    else handleTogglePrimaryKey(f.id);
+                  }}
+                  title="Click to cycle PK -> FK -> None"
+                  className={`px-1 py-0.5 rounded text-[9px] font-black tracking-wider cursor-pointer transition-all ${
+                    f.isPrimaryKey
+                      ? 'bg-amber-500 text-white shadow-2xs'
+                      : f.isForeignKey
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : 'bg-transparent text-transparent group-hover/row:text-[#6B6353] hover:bg-[#DCD4C2]'
+                  }`}
+                >
+                  {f.isPrimaryKey ? 'PK' : f.isForeignKey ? 'FK' : '·'}
+                </button>
+
+                {/* Field Name */}
+                <input
+                  defaultValue={f.name}
+                  onBlur={e => handleUpdateFieldName(f.id, e.target.value)}
+                  className="ignore-drag bg-transparent font-mono text-xs text-[#1D1A16] font-semibold outline-none w-full min-w-0 focus:bg-white focus:ring-1 focus:ring-[#1D1A16] rounded px-1 -mx-1"
+                />
+              </div>
+
+              {/* Data Type & Delete */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleCycleFieldType(f.id);
+                  }}
+                  title="Click to cycle data types"
+                  className="text-[10px] text-[#6B6353] bg-[#F4EFE4] px-1.5 py-0.5 rounded border border-[#DCD4C2] hover:border-[#1D1A16] hover:text-[#1D1A16] cursor-pointer"
+                >
+                  {f.type || 'VARCHAR'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleDeleteField(f.id);
+                  }}
+                  title="Remove column"
+                  className="opacity-0 group-hover/row:opacity-100 p-0.5 text-[#6B6353] hover:text-[#E24E1B] transition-opacity cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add Field Button */}
+        <div className="p-1.5 bg-[#F4EFE4]/40 border-t border-[#DCD4C2]">
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation();
+              handleAddField();
+            }}
+            className="w-full py-1 text-[10px] font-mono font-bold text-[#6B6353] hover:text-[#1D1A16] hover:bg-[#FFFDF6] border border-dashed border-[#DCD4C2] hover:border-[#1D1A16] rounded-md flex items-center justify-center gap-1 cursor-pointer transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            <span>Add Column</span>
+          </button>
+        </div>
+
+        {/* Connection Port */}
+        <div
+          title="Drag to connect"
+          onPointerDown={e => {
+            e.stopPropagation();
+            onStartLink(e, node);
+          }}
+          className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#FFFDF6] border-2 border-[#1D1A16] hover:bg-[#E24E1B] cursor-crosshair transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-sm z-30"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[#1D1A16] pointer-events-none" />
+        </div>
+
+        {/* Resize Handles */}
+        {isSelected && onResizeStart && (
+          <ResizeHandles
+            node={node}
+            onResizeStart={onResizeStart}
+            width={tableWidth}
+          />
+        )}
+
+        {/* Selection Toolbar */}
+        {isSelected && (
+          <SelectionActionToolbar
+            node={node}
+            activeMenu={activeMenu}
+            setActiveMenu={setActiveMenu}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onDuplicate={onDuplicate}
+            onStartEditBody={() => setIsEditingBody(true)}
+            onOpenLogoSearch={onOpenLogoSearch}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // 1.8 RENDER GEOMETRIC SHAPE NODES (Diamond, Cylinder, Hexagon, Circle, Cloud, Rectangle)
+  const isShape =
+    node.nodeType === 'shape' ||
+    node.nodeType === 'shape_diamond' ||
+    node.nodeType === 'shape_cylinder' ||
+    node.nodeType === 'shape_hexagon' ||
+    node.nodeType === 'shape_circle' ||
+    node.nodeType === 'shape_cloud' ||
+    node.nodeType === 'shape_rectangle';
+
+  if (isShape) {
+    const rawShape = node.shapeType || (node.nodeType?.startsWith('shape_') ? node.nodeType.replace('shape_', '') : 'rectangle');
+    const shapeType = rawShape.toLowerCase();
+    const shapeWidth = Math.max(130, node.width || (shapeType === 'diamond' ? 180 : 200));
+    const shapeHeight = Math.max(90, node.height || (shapeType === 'diamond' ? 140 : 130));
+
+    return (
+      <div
+        data-node-id={node.id}
+        style={{
+          transform: `translate(${node.x}px, ${node.y}px) rotate(${rotation}deg)`,
+          width: `${shapeWidth}px`,
+          height: `${shapeHeight}px`,
+        }}
+        onPointerDown={e => {
+          if ((e.target as HTMLElement).closest('.ignore-drag')) return;
+          onSelect(node.id);
+          onDragStart(e, node);
+        }}
+        className={`absolute select-none cursor-grab active:cursor-grabbing flex flex-col items-center justify-center p-3 transition-all group ${
+          isSelected ? 'z-20' : 'z-10'
+        } ${isHighlighted ? 'animate-bounce z-30' : ''}`}
+      >
+        {/* Background Visual Shape */}
+        <div
+          style={{ backgroundColor: bgHex }}
+          className={`absolute inset-0 border-2 border-[#1D1A16] shadow-[4px_4px_0_#1D1A16] transition-all ${
+            shapeType === 'circle'
+              ? 'rounded-full'
+              : shapeType === 'cylinder'
+              ? 'rounded-2xl border-t-8'
+              : shapeType === 'diamond'
+              ? 'rotate-45 scale-75 rounded-xl'
+              : shapeType === 'hexagon'
+              ? 'rounded-xl [clip-path:polygon(20%_0%,80%_0%,100%_50%,80%_100%,20%_100%,0%_50%)]'
+              : shapeType === 'cloud'
+              ? 'rounded-3xl border-dashed'
+              : 'rounded-xl'
+          } ${isSelected ? 'ring-2 ring-[#E24E1B] ring-offset-2' : ''}`}
+        />
+
+        {/* Content */}
+        <div className="relative z-10 text-center px-3 w-full">
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              value={titleValue}
+              onChange={e => setTitleValue(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitTitle();
+                if (e.key === 'Escape') setIsEditingTitle(false);
+              }}
+              className="ignore-drag font-['Space_Grotesk'] font-bold text-sm text-[#1D1A16] text-center w-full bg-transparent outline-none border-b border-[#1D1A16]"
+            />
+          ) : (
+            <h4
+              onDoubleClick={e => {
+                e.stopPropagation();
+                setIsEditingTitle(true);
+              }}
+              className="font-['Space_Grotesk'] font-bold text-sm text-[#1D1A16] leading-tight break-words cursor-text"
+            >
+              {node.title}
+            </h4>
+          )}
+
+          {node.body && (
+            <p
+              onDoubleClick={e => {
+                e.stopPropagation();
+                setIsEditingBody(true);
+              }}
+              className="text-[11px] text-[#403A2F] mt-1 leading-snug line-clamp-2 cursor-text font-['Space_Grotesk']"
+            >
+              {node.body}
+            </p>
+          )}
+        </div>
+
+        {/* Connection Port */}
+        <div
+          title="Drag to connect"
+          onPointerDown={e => {
+            e.stopPropagation();
+            onStartLink(e, node);
+          }}
+          className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#FFFDF6] border-2 border-[#1D1A16] hover:bg-[#E24E1B] cursor-crosshair transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-sm z-30"
+        >
+          <span className="w-1 h-1 rounded-full bg-[#1D1A16] pointer-events-none" />
+        </div>
+
+        {/* Resize Handles */}
+        {isSelected && onResizeStart && (
+          <ResizeHandles
+            node={node}
+            onResizeStart={onResizeStart}
+            width={shapeWidth}
           />
         )}
 
@@ -387,7 +757,7 @@ export function StickyNote({
   }
 
   // 3. RENDER TECH & BRAND LOGO NODE
-  if (node.nodeType === 'logo' || currentLogo) {
+  if (node.nodeType === 'logo' || currentLogo || currentGilLogo || node.logoType) {
     const LogoIcon = currentLogo?.icon || fallbackIcon || AVAILABLE_LOGOS[0].icon;
     const logoColor = currentLogo?.color || '#00C7B7';
     const logoTileSize = Math.max(56, Math.min(128, (node.width || 120) * 0.55));
@@ -415,7 +785,11 @@ export function StickyNote({
             isSelected ? 'ring-2 ring-[#E24E1B] ring-offset-2 shadow-[4px_4px_0_#E24E1B]' : ''
           }`}
         >
-          <LogoIcon size={Math.round(logoTileSize * 0.52)} />
+          {currentGilLogo && currentGilLogo.file ? (
+            <DynamicGilbarbaraIcon file={currentGilLogo.file} size={Math.round(logoTileSize * 0.55)} />
+          ) : (
+            <LogoIcon size={Math.round(logoTileSize * 0.52)} />
+          )}
 
           {/* Connection Port */}
           <div
@@ -452,7 +826,7 @@ export function StickyNote({
               }}
               className="font-['Space_Grotesk'] font-bold text-xs text-[#1D1A16] leading-tight block break-words cursor-text px-1.5 py-0.5 rounded hover:bg-[#1D1A16]/5 transition-colors"
             >
-              {node.title || currentLogo?.name || 'Tech Logo'}
+              {node.title || currentLogo?.name || currentGilLogo?.name || 'Tech Logo'}
             </span>
           )}
         </div>
