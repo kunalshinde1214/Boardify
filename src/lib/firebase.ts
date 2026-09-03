@@ -17,11 +17,14 @@ let auth: Auth | null = null;
 
 const isConfigured = Boolean(
   process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
-  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key' &&
+  !process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('demo') &&
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID &&
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID !== 'boardify-demo'
 );
 
 try {
-  if (typeof window !== 'undefined' || isConfigured) {
+  if (isConfigured) {
     app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     db = getFirestore(app);
     auth = getAuth(app);

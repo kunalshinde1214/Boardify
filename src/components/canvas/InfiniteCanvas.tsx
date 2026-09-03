@@ -349,20 +349,34 @@ export function InfiniteCanvas({
     }
   };
 
-  // Wheel zoom centered at mouse cursor
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const zoomFactor = Math.exp(-e.deltaY * 0.00125);
-    const newZoom = Math.max(0.2, Math.min(2.5, camera.z * zoomFactor));
+  // Wheel zoom centered at mouse cursor (attached natively with { passive: false } to prevent browser passive warning)
+  const cameraRef = useRef(camera);
+  cameraRef.current = camera;
 
-    const mouseX = e.clientX;
-    const mouseY = e.clientY;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    const newCamX = mouseX - (mouseX - camera.x) * (newZoom / camera.z);
-    const newCamY = mouseY - (mouseY - camera.y) * (newZoom / camera.z);
+    const onNativeWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const currentCamera = cameraRef.current;
+      const zoomFactor = Math.exp(-e.deltaY * 0.00125);
+      const newZoom = Math.max(0.2, Math.min(2.5, currentCamera.z * zoomFactor));
 
-    onUpdateCamera({ x: newCamX, y: newCamY, z: newZoom });
-  };
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+
+      const newCamX = mouseX - (mouseX - currentCamera.x) * (newZoom / currentCamera.z);
+      const newCamY = mouseY - (mouseY - currentCamera.y) * (newZoom / currentCamera.z);
+
+      onUpdateCamera({ x: newCamX, y: newCamY, z: newZoom });
+    };
+
+    container.addEventListener('wheel', onNativeWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', onNativeWheel);
+    };
+  }, [onUpdateCamera]);
 
   // Double click canvas to create note
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -484,7 +498,6 @@ export function InfiniteCanvas({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
       style={{
         backgroundSize: `${26 * camera.z}px ${26 * camera.z}px`,

@@ -16,16 +16,27 @@ export function LLMSettingsView() {
     const cfg = getLLMConfig();
     setProvider(cfg.provider || 'smart_mock');
     setApiKey(cfg.apiKey || '');
-    setModel(cfg.model || '');
+    let initialModel = cfg.model || '';
+    if (initialModel === 'gemini-pro' || initialModel === 'gemini' || !initialModel) {
+      if (cfg.provider === 'gemini') initialModel = 'gemini-2.0-flash';
+    }
+    setModel(initialModel);
   }, []);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    let finalModel = model.trim();
+    if (provider === 'gemini' && (!finalModel || finalModel === 'gemini-pro' || finalModel === 'gemini')) {
+      finalModel = 'gemini-2.0-flash';
+    }
+    const cleanKey = apiKey.trim().replace(/^["']|["']$/g, '');
     saveLLMConfig({
       provider,
-      apiKey: apiKey.trim(),
-      model: model.trim() || undefined,
+      apiKey: cleanKey,
+      model: finalModel || undefined,
     });
+    setApiKey(cleanKey);
+    setModel(finalModel);
     showToast('AI Provider settings saved!', 'ok');
   };
 
@@ -99,8 +110,60 @@ export function LLMSettingsView() {
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-[#1D1A16]">Custom Model (Optional)</label>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-[#1D1A16] flex items-center justify-between">
+              <span>Model Selection</span>
+              <span className="text-[10px] text-[#6B6353]">Modern API</span>
+            </label>
+
+            {provider === 'gemini' && (
+              <div className="grid grid-cols-3 gap-1.5 pb-1">
+                {[
+                  { id: 'gemini-2.0-flash', label: '2.0 Flash', desc: 'Fastest' },
+                  { id: 'gemini-1.5-flash', label: '1.5 Flash', desc: 'High Quota' },
+                  { id: 'gemini-1.5-pro', label: '1.5 Pro', desc: 'Reasoning' },
+                ].map(m => (
+                  <button
+                    type="button"
+                    key={m.id}
+                    onClick={() => setModel(m.id)}
+                    className={`px-2 py-1.5 rounded-lg border text-left cursor-pointer transition-all ${
+                      (model || 'gemini-2.0-flash') === m.id
+                        ? 'border-[#E24E1B] bg-[#FFD8C7]/50 font-bold text-[#1D1A16]'
+                        : 'border-[#DCD4C2] bg-[#FFFDF6] text-[#6B6353] hover:bg-[#F4EFE4]'
+                    }`}
+                  >
+                    <div className="text-[11px] leading-tight font-mono">{m.label}</div>
+                    <div className="text-[9px] text-[#6B6353]">{m.desc}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {provider === 'openai' && (
+              <div className="grid grid-cols-3 gap-1.5 pb-1">
+                {[
+                  { id: 'gpt-4o-mini', label: '4o-mini', desc: 'Fast & cheap' },
+                  { id: 'gpt-4o', label: 'GPT-4o', desc: 'Full frontier' },
+                  { id: 'o3-mini', label: 'o3-mini', desc: 'Reasoning' },
+                ].map(m => (
+                  <button
+                    type="button"
+                    key={m.id}
+                    onClick={() => setModel(m.id)}
+                    className={`px-2 py-1.5 rounded-lg border text-left cursor-pointer transition-all ${
+                      (model || 'gpt-4o-mini') === m.id
+                        ? 'border-[#E24E1B] bg-[#FFD8C7]/50 font-bold text-[#1D1A16]'
+                        : 'border-[#DCD4C2] bg-[#FFFDF6] text-[#6B6353] hover:bg-[#F4EFE4]'
+                    }`}
+                  >
+                    <div className="text-[11px] leading-tight font-mono">{m.label}</div>
+                    <div className="text-[9px] text-[#6B6353]">{m.desc}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <input
               type="text"
               value={model}

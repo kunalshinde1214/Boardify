@@ -41,6 +41,7 @@ export function ExportModal({ isOpen, nodes, edges, onClose, onOpenNetlifyDeploy
             quality: 0.98,
             pixelRatio: 2,
             backgroundColor: '#F4EFE4',
+            skipFonts: true,
             filter: node => {
               // Ignore agent studio drawer and fixed buttons if nested
               if ((node as HTMLElement)?.classList?.contains?.('minimap-container')) return false;

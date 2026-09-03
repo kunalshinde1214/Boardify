@@ -14,26 +14,58 @@
 
 **Boardify** turns the traditional whiteboard into an agent-addressable canvas. Instead of trapping AI in a disconnected sidebar chat or relying on brittle visual screen-scraping, Boardify natively implements the **WebMCP standard** (`document.modelContext.registerTool`).
 
-When opened in **ChatGPT's in-app browser** or **Google Chrome with WebMCP enabled**, Boardify registers **12 first-class structured tools**. AI browser agents can read the canvas state, spawn sticky notes, draw labeled bezier connection wires, highlight areas of focus, rearrange layouts into clusters or timelines, and export structured sprint documentation—all with sub-20ms client execution.
+When opened in **ChatGPT's in-app browser** or **Google Chrome with WebMCP enabled**, Boardify registers **24 first-class structured tools**. AI browser agents can read the canvas state, spawn sticky notes, draw labeled bezier connection wires, generate typed SQL ERD tables, compile diagram-as-code DSL, highlight areas of focus, rearrange layouts into force-directed clusters or timelines, and export structured sprint documentation—all with sub-20ms client execution.
+
+```javascript
+// Official WebMCP Browser Standard Implementation
+document.modelContext.registerTool({
+  name: "add_idea_node",
+  description: "Create a sticky note on the infinite canvas with collision-free placement",
+  inputSchema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Headline for the note" },
+      body: { type: "string", description: "Detailed content or bullet points" },
+      color: { type: "string", enum: ["butter", "sage", "coral", "slate", "lavender", "mint"] }
+    },
+    required: ["title"]
+  },
+  execute: async (input) => {
+    return handleAddNode(input);
+  }
+});
+```
 
 ---
 
-## 🛠️ The 12 WebMCP Tools Registered on `document.modelContext`
+## 🛠️ The 24 WebMCP Tools Registered on `document.modelContext`
 
 | Tool Name | Description | Key Parameters |
 | :--- | :--- | :--- |
 | `get_canvas_state` | Reads full board snapshot (all nodes, coordinates, authors, links). | `{}` |
 | `add_idea_node` | Creates a sticky note with collision-free placement and color. | `title`, `body`, `x`, `y`, `color` |
+| `add_entity_table` | Spawns typed relational SQL ER table with PK/FK columns. | `tableName`, `fields: []` |
+| `add_shape_node` | Spawns decision diamonds, cloud services, cylinder databases. | `shapeType`, `label` |
+| `add_logo_node` | Spawns vector brand icon chip (Next.js, Redis, Kafka, etc.). | `logoType`, `title`, `body` |
+| `add_sign_node` | Spawns tactile road & milestone status signs. | `signType`, `title` |
 | `update_node` | Updates an existing note's title, body, color, or position. | `node_id`, `title`, `body`, `color`, `x`, `y` |
 | `delete_node` | Removes a note and cascade-deletes attached connection wires. | `node_id` |
-| `connect_nodes` | Draws a directed bezier curve with relationship label. | `source_id`, `target_id`, `label` |
-| `arrange_layout` | Auto-arranges canvas via graph clustering, timeline, kanban, or grid. | `layout: 'clusters' \| 'timeline' \| 'kanban' \| 'grid'` |
+| `connect_nodes` | Draws directed, bidirectional, solid, or dashed bezier wires. | `source_id`, `target_id`, `label`, `direction` |
+| `layout_diagram` | Auto-arranges canvas via force-directed physics or clustering. | `algorithm: 'force_directed' \| 'hierarchical' \| 'radial'` |
+| `arrange_layout` | Arranges notes into clusters, timeline, kanban, or grid. | `layout: 'clusters' \| 'timeline' \| 'kanban' \| 'grid'` |
+| `render_diagram_dsl`| Compiles Diagram-as-Code (Eraser/Mermaid DSL) directly onto canvas. | `dsl_text`, `append` |
 | `highlight_node` | Panning focus + pulsing ripple + agent speech bubble callout. | `node_id`, `reason` |
 | `export_canvas` | Generates Markdown outline, Mermaid flowchart, or JSON graph. | `format: 'markdown' \| 'mermaid' \| 'json'` |
 | `clear_canvas` | Wipes the board with safety confirmation flag. | `confirm: true` |
-| `batch_create_nodes`| Atomically creates complex frameworks (SWOT, 4 Ps, Pros/Cons). | `nodes: []`, `links: []` |
+| `batch_create_nodes`| Atomically creates complex architectures & multi-step flows. | `nodes: []`, `links: []` |
 | `search_canvas` | Searches note content and highlights matching nodes. | `query` |
 | `cluster_by_topic` | Groups notes by semantic tags and visual columns. | `{}` |
+| `create_checkpoint`| Creates an instant named snapshot of the entire board. | `name` |
+| `restore_checkpoint`| Restores canvas to any previous state in zero ms. | `checkpointIdOrName` |
+| `undo_canvas` | Reverts last user or agent action. | `{}` |
+| `redo_canvas` | Redoes reverted action. | `{}` |
+| `duplicate_node` | Clones an existing node with offset. | `id`, `offset` |
+| `capture_screenshot`| Captures SVG/PNG raster of the active viewport. | `{}` |
 
 ---
 

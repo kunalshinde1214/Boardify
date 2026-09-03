@@ -63,6 +63,25 @@ export function getLLMConfig(): LLMConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      let modified = false;
+      if (parsed.provider === 'gemini' || !parsed.provider) {
+        if (!parsed.model || parsed.model.includes('gemini-pro') || parsed.model === 'gemini' || parsed.model === 'gemini-1.0-pro') {
+          parsed.model = 'gemini-2.0-flash';
+          modified = true;
+        }
+      }
+      if (parsed.apiKey) {
+        const cleanedKey = parsed.apiKey.trim().replace(/^["']|["']$/g, '');
+        if (cleanedKey !== parsed.apiKey) {
+          parsed.apiKey = cleanedKey;
+          modified = true;
+        }
+      }
+      if (modified) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        } catch {}
+      }
       if (parsed.apiKey && parsed.apiKey.trim().length > 0) return parsed;
       if (parsed.provider === 'smart_mock') return parsed;
     }
@@ -73,12 +92,12 @@ export function getLLMConfig(): LLMConfig {
   // Auto-detect environment variables if configured
   const envGemini = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   if (envGemini && envGemini.startsWith('AIzaSy')) {
-    return { provider: 'gemini', apiKey: envGemini, model: 'gemini-2.0-flash' };
+    return { provider: 'gemini', apiKey: envGemini.trim().replace(/^["']|["']$/g, ''), model: 'gemini-2.0-flash' };
   }
 
   const envOpenAI = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
   if (envOpenAI && envOpenAI.startsWith('sk-')) {
-    return { provider: 'openai', apiKey: envOpenAI, model: 'gpt-4o-mini' };
+    return { provider: 'openai', apiKey: envOpenAI.trim().replace(/^["']|["']$/g, ''), model: 'gpt-4o-mini' };
   }
 
   return { provider: 'smart_mock' };
@@ -185,41 +204,85 @@ Return ONLY a JSON object matching this structure:
   if (config.provider === 'gemini' && config.apiKey) {
     let lastError = null;
     try {
+      const cleanKey = (config.apiKey || '').trim().replace(/^["']|["']$/g, '');
       let rawModel = (config.model || 'gemini-2.0-flash').trim().replace(/^models\//, '');
-      const modelsToTry = [rawModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
-      const uniqueModels = Array.from(new Set(modelsToTry));
+      // Automatically upgrade deprecated/sunsetted gemini-pro to gemini-2.0-flash
+      if (!rawModel || rawModel.includes('gemini-pro') || rawModel === 'gemini' || rawModel === 'gemini-1.0-pro') {
+        rawModel = 'gemini-2.0-flash';
+      }
 
-      for (const m of uniqueModels) {
-        try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${config.apiKey.trim()}`;
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: `${systemInstruction}\n\nUser Prompt: ${prompt}\n\nRespond with valid JSON only.` }] }],
-              generationConfig: { responseMimeType: 'application/json', temperature: 0.7 },
-            }),
-          });
+      // Valid, modern production Gemini models
+      const modelsToTry = Array.from(
+        new Set([
+          rawModel,
+          'gemini-2.0-flash',
+          'gemini-1.5-flash',
+          'gemini-1.5-pro',
+        ])
+      );
 
-          if (res.ok) {
-            const data = await res.json();
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            const cleanJson = rawText.replace(/```(?:json)?\n?/g, '').trim();
-            const parsed = JSON.parse(cleanJson);
-            parsed._providerUsed = 'gemini';
-            return parsed;
-          } else {
-            const err = await res.json();
-            lastError = err.error?.message || `HTTP ${res.status}`;
+      const requestPayload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `${systemInstruction}\n\nUser Prompt: ${prompt}\n\nRespond with valid JSON only matching the GeneratedPlan structure.`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+        },
+      };
+
+      for (const m of modelsToTry) {
+        for (const apiVer of ['v1beta', 'v1']) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${m}:generateContent?key=${cleanKey}`;
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestPayload),
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+              const cleanJson = rawText.replace(/```(?:json)?\n?/gi, '').replace(/```/g, '').trim();
+              const parsed = JSON.parse(cleanJson);
+              parsed._providerUsed = 'gemini';
+              return parsed;
+            } else {
+              const err = await res.json().catch(() => ({}));
+              const errMsg = err.error?.message || `HTTP ${res.status}`;
+              lastError = errMsg;
+            }
+          } catch (e: any) {
+            lastError = e?.message;
           }
-        } catch (e: any) {
-          lastError = e?.message;
         }
       }
-      console.warn('Gemini call failed:', lastError);
+
+      // Format a concise, clean user-facing error message
+      let cleanErrorMessage = 'Gemini API call failed';
+      if (lastError) {
+        if (lastError.includes('API key not valid')) {
+          cleanErrorMessage = 'Invalid Gemini API key';
+        } else if (lastError.includes('quota') || lastError.includes('RESOURCE_EXHAUSTED')) {
+          cleanErrorMessage = 'Gemini quota exceeded';
+        } else if (lastError.includes('not found') || lastError.includes('gemini-pro')) {
+          cleanErrorMessage = 'Gemini model unavailable on key';
+        } else {
+          cleanErrorMessage = lastError.slice(0, 60);
+        }
+      }
+
+      console.warn('Gemini calls failed:', lastError);
       const fallback = generateHeuristicPlan(prompt, existingNodes);
       fallback._providerUsed = 'smart_mock';
-      fallback._error = lastError || 'Gemini API call failed';
+      fallback._error = cleanErrorMessage;
       return fallback;
     } catch (e: any) {
       console.warn('Gemini call failed, falling back to smart synthesis:', e);
