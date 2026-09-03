@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
@@ -31,6 +31,321 @@ import {
   GeminiIcon,
   AnthropicIcon,
 } from '@/components/ui/BrandIcons';
+
+function HeroCanvasPreview() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const card1Ref = useRef<HTMLDivElement>(null);
+  const card2Ref = useRef<HTMLDivElement>(null);
+  const card3Ref = useRef<HTMLDivElement>(null);
+
+  const [coords, setCoords] = useState<{
+    p1: { x: number; y: number };
+    p2: { x: number; y: number };
+    p3: { x: number; y: number };
+  }>({
+    p1: { x: 300, y: 160 },
+    p2: { x: 620, y: 100 },
+    p3: { x: 620, y: 310 },
+  });
+
+  const updateCoords = useCallback(() => {
+    if (!containerRef.current || !card1Ref.current || !card2Ref.current || !card3Ref.current) return;
+    const cRect = containerRef.current.getBoundingClientRect();
+    const r1 = card1Ref.current.getBoundingClientRect();
+    const r2 = card2Ref.current.getBoundingClientRect();
+    const r3 = card3Ref.current.getBoundingClientRect();
+
+    setCoords({
+      p1: { x: r1.right - cRect.left, y: r1.top + r1.height / 2 - cRect.top },
+      p2: { x: r2.left - cRect.left, y: r2.top + r2.height / 2 - cRect.top },
+      p3: { x: r3.left - cRect.left, y: r3.top + r3.height / 2 - cRect.top },
+    });
+  }, []);
+
+  useEffect(() => {
+    updateCoords();
+    window.addEventListener('resize', updateCoords);
+    const observer = new ResizeObserver(updateCoords);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => {
+      window.removeEventListener('resize', updateCoords);
+      observer.disconnect();
+    };
+  }, [updateCoords]);
+
+  // Wire 1: Card 1 to Card 2 (Human -> Agent Scaler)
+  const deltaX1 = Math.abs(coords.p2.x - coords.p1.x);
+  const offset1 = Math.max(30, deltaX1 * 0.45);
+  const path1 = `M ${coords.p1.x} ${coords.p1.y} C ${coords.p1.x + offset1} ${coords.p1.y}, ${coords.p2.x - offset1} ${coords.p2.y}, ${coords.p2.x} ${coords.p2.y}`;
+  const mid1X = (coords.p1.x + coords.p2.x) / 2;
+  const mid1Y = (coords.p1.y + coords.p2.y) / 2;
+
+  // Wire 2: Card 1 to Card 3 (Human -> Relational Schema)
+  const deltaX2 = Math.abs(coords.p3.x - coords.p1.x);
+  const offset2 = Math.max(30, deltaX2 * 0.45);
+  const path2 = `M ${coords.p1.x} ${coords.p1.y} C ${coords.p1.x + offset2} ${coords.p1.y}, ${coords.p3.x - offset2} ${coords.p3.y}, ${coords.p3.x} ${coords.p3.y}`;
+  const mid2X = (coords.p1.x + coords.p3.x) / 2;
+  const mid2Y = (coords.p1.y + coords.p3.y) / 2;
+
+  return (
+    <div className="mt-14 w-full max-w-5xl bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-3xl p-4 sm:p-6 shadow-[8px_8px_0_#1D1A16] relative overflow-hidden text-left">
+      {/* Top Bar of Preview Canvas */}
+      <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#DCD4C2]">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-[#E24E1B]" />
+          <div className="w-3 h-3 rounded-full bg-[#FFE9A8] border border-[#1D1A16]/30" />
+          <div className="w-3 h-3 rounded-full bg-[#DCEBC8] border border-[#1D1A16]/30" />
+          <span className="ml-2 font-mono text-xs text-[#6B6353] font-bold">
+            boardify.live/canvas/demo
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-500 text-emerald-800 text-[11px] font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            12 WebMCP Tools Active
+          </span>
+        </div>
+      </div>
+
+      {/* Canvas simulation viewport */}
+      <div
+        ref={containerRef}
+        className="relative min-h-[440px] sm:min-h-[460px] canvas-grid-bg rounded-2xl border-2 border-[#1D1A16]/15 overflow-hidden p-6 select-none"
+      >
+        {/* SVG Connected Wires */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible">
+          <defs>
+            <marker
+              id="hero-arrow-orange"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#E24E1B" />
+            </marker>
+            <marker
+              id="hero-arrow-dark"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#57503F" />
+            </marker>
+          </defs>
+
+          {/* Wire 1: Human -> Agent Scaler */}
+          <path
+            d={path1}
+            fill="none"
+            stroke="#E24E1B"
+            strokeWidth="2.4"
+            strokeDasharray="6 4"
+            markerEnd="url(#hero-arrow-orange)"
+          />
+
+          {/* Wire 2: Human -> Relational Schema */}
+          <path
+            d={path2}
+            fill="none"
+            stroke="#57503F"
+            strokeWidth="2.2"
+            markerEnd="url(#hero-arrow-dark)"
+          />
+
+          {/* Floating Midpoint Relationship Badges */}
+          <g transform={`translate(${mid1X}, ${mid1Y})`}>
+            <rect
+              x="-54"
+              y="-12"
+              width="108"
+              height="24"
+              rx="6"
+              fill="#FFFDF6"
+              stroke="#E24E1B"
+              strokeWidth="1.2"
+              className="shadow-sm"
+            />
+            <text
+              x="0"
+              y="4.5"
+              textAnchor="middle"
+              fill="#E24E1B"
+              fontSize="10"
+              fontFamily="'Space Grotesk', sans-serif"
+              fontWeight="bold"
+            >
+              ✨ prompts agent
+            </text>
+          </g>
+
+          <g transform={`translate(${mid2X}, ${mid2Y})`}>
+            <rect
+              x="-56"
+              y="-12"
+              width="112"
+              height="24"
+              rx="6"
+              fill="#FFFDF6"
+              stroke="#57503F"
+              strokeWidth="1.2"
+              className="shadow-sm"
+            />
+            <text
+              x="0"
+              y="4.5"
+              textAnchor="middle"
+              fill="#1D1A16"
+              fontSize="10"
+              fontFamily="'Space Grotesk', sans-serif"
+              fontWeight="bold"
+            >
+              ⚡ generates schema
+            </text>
+          </g>
+        </svg>
+
+        {/* Note 1: Human Anchor (Left) */}
+        <div
+          ref={card1Ref}
+          className="absolute top-1/2 -translate-y-1/2 left-4 sm:left-10 w-60 sm:w-68 bg-[#FFE9A8] border-2 border-[#1D1A16] p-4 rounded-xl shadow-[4px_4px_0_#1D1A16] -rotate-1 z-20 transition-all hover:rotate-0 hover:shadow-[6px_6px_0_#1D1A16]"
+        >
+          <div className="sticky-tape" />
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-[#1D1A16] text-[#FFFDF6] px-2 py-0.5 rounded">
+              YOU · ARCHITECT
+            </span>
+            <span className="text-[10px] font-mono text-[#6B6353]">Input</span>
+          </div>
+          <h4 className="font-['Fraunces'] italic font-bold text-lg text-[#1D1A16] mt-1 leading-snug">
+            Product Vision 2026
+          </h4>
+          <p className="font-['Space_Grotesk'] text-xs text-[#403A2F] mt-1.5 leading-relaxed">
+            Zero blank canvas paralysis. Human and autonomous agent co-architect systems in one shared spatial frame.
+          </p>
+          <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-[#1D1A16]/10 text-[10px] font-mono text-[#6B6353]">
+            <span className="bg-[#1D1A16]/5 px-1.5 py-0.5 rounded font-bold">#spatial-ai</span>
+            <span className="bg-[#1D1A16]/5 px-1.5 py-0.5 rounded font-bold">#agentic</span>
+          </div>
+
+          {/* Right magnetic output port */}
+          <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#FFFDF6] border-2 border-[#E24E1B] flex items-center justify-center shadow-xs">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#E24E1B]" />
+          </div>
+        </div>
+
+        {/* Note 2: Agent Autonomous Scaler (Top Right) */}
+        <div
+          ref={card2Ref}
+          className="absolute top-6 right-4 sm:right-10 w-64 sm:w-76 bg-[#FFFDF6] border-2 border-[#1D1A16] p-4 rounded-xl shadow-[4px_4px_0_#1D1A16] rotate-1 z-20 transition-all hover:rotate-0 hover:shadow-[6px_6px_0_#1D1A16]"
+        >
+          <div className="sticky-tape" />
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-[#E24E1B] text-white px-2 py-0.5 rounded flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5" /> AGENT · SWARM
+            </span>
+            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+              Active
+            </span>
+          </div>
+          <h4 className="font-['Fraunces'] italic font-bold text-lg text-[#1D1A16] mt-1 leading-snug">
+            WebMCP Autonomous Scaler
+          </h4>
+          <p className="font-['Space_Grotesk'] text-xs text-[#403A2F] mt-1 leading-relaxed">
+            Automated branch expansion, smart DAG clustering, and real-time state synchronization.
+          </p>
+          <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-[#DCD4C2] flex-wrap">
+            <span className="text-[9px] font-mono uppercase bg-[#F4EFE4] px-1.5 py-0.5 rounded border border-[#DCD4C2] font-bold text-[#1D1A16]">
+              Next.js 15
+            </span>
+            <span className="text-[9px] font-mono uppercase bg-[#F4EFE4] px-1.5 py-0.5 rounded border border-[#DCD4C2] font-bold text-[#1D1A16]">
+              Claude 3.7
+            </span>
+            <span className="text-[9px] font-mono uppercase bg-[#FFE9A8] px-1.5 py-0.5 rounded border border-[#1D1A16]/20 font-bold text-[#E24E1B]">
+              WebMCP
+            </span>
+          </div>
+
+          {/* Left magnetic input port */}
+          <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#FFFDF6] border-2 border-[#E24E1B] flex items-center justify-center shadow-xs">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#E24E1B]" />
+          </div>
+        </div>
+
+        {/* Note 3: Agent SQL Entity Table (Bottom Right) */}
+        <div
+          ref={card3Ref}
+          className="absolute bottom-6 right-4 sm:right-14 w-64 sm:w-76 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl shadow-[4px_4px_0_#1D1A16] -rotate-1 z-20 transition-all hover:rotate-0 hover:shadow-[6px_6px_0_#1D1A16] overflow-hidden"
+        >
+          <div className="sticky-tape" />
+          <div className="px-3.5 py-2 bg-[#F4EFE4] border-b-2 border-[#1D1A16] flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-mono font-bold uppercase bg-[#1D1A16] text-[#FFFDF6] px-1.5 py-0.5 rounded">
+                ER TABLE
+              </span>
+              <h4 className="font-['Fraunces'] italic font-bold text-sm text-[#1D1A16]">
+                workspaces
+              </h4>
+            </div>
+            <span className="text-[9px] font-mono font-bold text-[#6B6353]">SQL Schema</span>
+          </div>
+
+          <div className="p-2.5 space-y-1 text-[11px] font-mono bg-[#FFFDF6]">
+            <div className="flex items-center justify-between px-1.5 py-0.5 rounded bg-[#F4EFE4]/60">
+              <span className="flex items-center gap-1 font-bold text-[#1D1A16]">
+                <span className="text-[9px] font-bold text-[#E24E1B] bg-[#FFD8C7] px-1 rounded">PK</span>
+                id
+              </span>
+              <span className="text-[#6B6353] text-[10px]">UUID</span>
+            </div>
+            <div className="flex items-center justify-between px-1.5 py-0.5">
+              <span className="flex items-center gap-1 text-[#403A2F]">
+                <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1 rounded">FK</span>
+                user_id
+              </span>
+              <span className="text-[#6B6353] text-[10px]">VARCHAR(255)</span>
+            </div>
+            <div className="flex items-center justify-between px-1.5 py-0.5">
+              <span className="text-[#403A2F]">nodes_state</span>
+              <span className="text-[#6B6353] text-[10px]">JSONB</span>
+            </div>
+            <div className="flex items-center justify-between px-1.5 py-0.5">
+              <span className="text-[#403A2F]">synced_at</span>
+              <span className="text-[#6B6353] text-[10px]">TIMESTAMP</span>
+            </div>
+          </div>
+
+          {/* Left magnetic input port */}
+          <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#FFFDF6] border-2 border-[#57503F] flex items-center justify-center shadow-xs">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#57503F]" />
+          </div>
+        </div>
+
+        {/* Ghost Cursor Simulation Floating Near Center Wires */}
+        <div
+          style={{
+            left: `${mid1X - 20}px`,
+            top: `${mid1Y + 36}px`,
+          }}
+          className="absolute flex items-center gap-2 pointer-events-none z-30 animate-pulse transition-all"
+        >
+          <div className="w-7 h-7 rounded-full bg-[#E24E1B] text-white flex items-center justify-center shadow-md border-2 border-white">
+            <Sparkles className="w-3.5 h-3.5" />
+          </div>
+          <span className="bg-[#FFFDF6] border-2 border-[#E24E1B] text-[#E24E1B] text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-[2px_2px_0_#E24E1B] font-mono whitespace-nowrap">
+            AGENT · calling add_entity_table("workspaces")
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LandingPageContent() {
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
@@ -108,98 +423,7 @@ function LandingPageContent() {
         </div>
 
         {/* Interactive Canvas Preview Card */}
-        <div className="mt-14 w-full max-w-5xl bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-3xl p-4 sm:p-6 shadow-[8px_8px_0_#1D1A16] relative overflow-hidden text-left">
-          {/* Top Bar of Fake Canvas */}
-          <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#DCD4C2]">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#E24E1B]" />
-              <div className="w-3 h-3 rounded-full bg-[#FFE9A8] border border-[#1D1A16]/30" />
-              <div className="w-3 h-3 rounded-full bg-[#DCEBC8] border border-[#1D1A16]/30" />
-              <span className="ml-2 font-mono text-xs text-[#6B6353] font-bold">
-                boardify.live/canvas/demo
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-500 text-emerald-800 text-[11px] font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                12 WebMCP Tools Active
-              </span>
-            </div>
-          </div>
-
-          {/* Canvas simulation viewport */}
-          <div className="relative h-80 sm:h-96 canvas-grid-bg rounded-2xl border border-[#DCD4C2] overflow-hidden p-6">
-            {/* Note 1: Human */}
-            <div className="absolute top-8 left-8 sm:left-14 w-60 bg-[#FFE9A8] border border-[#1D1A16]/20 p-3.5 rounded-md shadow-[3px_4px_0_rgba(29,26,22,0.1)] -rotate-1">
-              <div className="sticky-tape" />
-              <span className="text-[9px] font-bold uppercase tracking-wider bg-[#1D1A16] text-[#F4EFE4] px-1.5 py-0.5 rounded">
-                YOU
-              </span>
-              <h4 className="font-['Caveat'] font-bold text-xl text-[#1D1A16] mt-1">
-                Product Vision 2026
-              </h4>
-              <p className="font-['Kalam'] text-xs text-[#403A2F] mt-1">
-                Zero blank canvas paralysis. Human and agent think together in one spatial frame.
-              </p>
-            </div>
-
-            {/* Bezier Wire in Preview */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none">
-              <path
-                d="M 280 80 C 350 80, 380 60, 460 60"
-                fill="none"
-                stroke="#57503F"
-                strokeWidth="2"
-                markerEnd="url(#arrow-preview)"
-              />
-              <path
-                d="M 280 120 C 360 120, 390 190, 460 200"
-                fill="none"
-                stroke="#E24E1B"
-                strokeWidth="2"
-                strokeDasharray="4 4"
-              />
-            </svg>
-
-            {/* Note 2: Agent */}
-            <div className="absolute top-6 right-8 sm:right-20 w-64 bg-[#DAE5E6] border border-[#1D1A16]/20 p-3.5 rounded-md shadow-[3px_4px_0_rgba(29,26,22,0.1)] rotate-2">
-              <div className="sticky-tape" />
-              <span className="text-[9px] font-bold uppercase tracking-wider bg-[#E24E1B] text-white px-1.5 py-0.5 rounded flex items-center gap-1 w-fit">
-                <Sparkles className="w-2.5 h-2.5" /> AGENT
-              </span>
-              <h4 className="font-['Caveat'] font-bold text-xl text-[#1D1A16] mt-1">
-                WebMCP Autonomous Scaler
-              </h4>
-              <p className="font-['Kalam'] text-xs text-[#403A2F] mt-1">
-                Tireless branch expansion, smart layout clustering, and instant Markdown synchronization.
-              </p>
-            </div>
-
-            {/* Note 3: Agent Note 2 */}
-            <div className="absolute bottom-6 right-8 sm:right-28 w-60 bg-[#DCEBC8] border border-[#1D1A16]/20 p-3.5 rounded-md shadow-[3px_4px_0_rgba(29,26,22,0.1)] -rotate-2">
-              <div className="sticky-tape" />
-              <span className="text-[9px] font-bold uppercase tracking-wider bg-[#E24E1B] text-white px-1.5 py-0.5 rounded flex items-center gap-1 w-fit">
-                <Sparkles className="w-2.5 h-2.5" /> AGENT
-              </span>
-              <h4 className="font-['Caveat'] font-bold text-xl text-[#1D1A16] mt-1">
-                Real-Time Firestore Sync
-              </h4>
-              <p className="font-['Kalam'] text-xs text-[#403A2F] mt-1">
-                Multiplayer room broadcasting coordinate diffs at 60 FPS.
-              </p>
-            </div>
-
-            {/* Ghost Cursor Simulation */}
-            <div className="absolute top-44 left-1/2 -translate-x-1/2 flex items-center gap-2 pointer-events-none animate-bounce">
-              <div className="w-7 h-7 rounded-full bg-[#E24E1B] text-white flex items-center justify-center shadow-lg border border-white">
-                <Sparkles className="w-3.5 h-3.5" />
-              </div>
-              <span className="bg-[#FFFDF6] border border-[#E24E1B] text-[#E24E1B] text-[10px] font-bold px-2 py-0.5 rounded shadow-[2px_2px_0_#E24E1B]">
-                AGENT · calling add_idea_node
-              </span>
-            </div>
-          </div>
-        </div>
+        <HeroCanvasPreview />
       </section>
 
       {/* Protocol Comparison Section: WebMCP vs Screen Scraping */}
