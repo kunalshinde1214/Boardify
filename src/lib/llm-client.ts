@@ -10,14 +10,41 @@ export interface LLMConfig {
 
 export interface GeneratedPlan {
   summary: string;
+  _providerUsed?: string;
+  _error?: string;
   nodes: {
     title: string;
     body: string;
     color: NoteColor;
-    nodeType?: 'default' | 'agent' | 'tool' | 'database' | 'api' | 'cloud' | 'auth' | 'trigger' | 'ui' | 'sign' | 'logo' | 'heading' | 'task';
+    nodeType?:
+      | 'default'
+      | 'agent'
+      | 'tool'
+      | 'database'
+      | 'api'
+      | 'cloud'
+      | 'auth'
+      | 'trigger'
+      | 'ui'
+      | 'sign'
+      | 'logo'
+      | 'heading'
+      | 'task'
+      | 'table'
+      | 'shape';
     signType?: string;
     logoType?: string;
     stamp?: string;
+    fields?: {
+      id: string;
+      name: string;
+      type: string;
+      isPrimaryKey?: boolean;
+      isForeignKey?: boolean;
+      isNullable?: boolean;
+      foreignTable?: string;
+    }[];
+    shapeType?: 'rectangle' | 'circle' | 'diamond' | 'cylinder' | 'hexagon' | 'cloud';
     tasks?: { text: string; done?: boolean }[];
     suggestedOffset?: { x: number; y: number };
   }[];
@@ -34,10 +61,26 @@ export function getLLMConfig(): LLMConfig {
   if (typeof window === 'undefined') return { provider: 'smart_mock' };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.apiKey && parsed.apiKey.trim().length > 0) return parsed;
+      if (parsed.provider === 'smart_mock') return parsed;
+    }
   } catch {
     // fallback
   }
+
+  // Auto-detect environment variables if configured
+  const envGemini = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (envGemini && envGemini.startsWith('AIzaSy')) {
+    return { provider: 'gemini', apiKey: envGemini, model: 'gemini-2.0-flash' };
+  }
+
+  const envOpenAI = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  if (envOpenAI && envOpenAI.startsWith('sk-')) {
+    return { provider: 'openai', apiKey: envOpenAI, model: 'gpt-4o-mini' };
+  }
+
   return { provider: 'smart_mock' };
 }
 
@@ -57,7 +100,7 @@ export async function generateDynamicPlan(
     .join('\n');
 
   const systemInstruction = `You are a spatial whiteboard strategy and systems architecture expert for Boardify.
-The user is working on an infinite canvas with sticky notes, tech/brand logos, status signs, section headers, checklists, and directional connection wires.
+The user is working on an infinite canvas with sticky notes, tech/brand logos, relational database tables, decision diamonds, status signs, section headers, checklists, and directional connection wires.
 
 Existing board context:
 ${contextNotes || '(Board is empty)'}
@@ -66,12 +109,14 @@ User Request: "${prompt}"
 
 CRITICAL INSTRUCTIONS:
 1. Exact Text Fidelity: If the user provides specific text or asks to add verbatim content (e.g. "add this text: XYZ"), place their exact text in the "body" field without truncating or losing detail.
-2. Tech Logos: If the request refers to software or infrastructure tools, set nodeType: "logo" and logoType to one of: "netlify", "nextjs", "openai", "claude", "gemini", "react", "aws", "firebase", "supabase", "postgres", "redis", "docker", "github", "stripe", "tailwind", "typescript", "python", "graphql", "kubernetes", "linear", "figma", "slack", "discord".
-3. Road & Status Signs: If the request refers to alerts, milestones, risks, or blockers, set nodeType: "sign" and signType to one of: "warning", "stop", "launch", "goal", "idea", "critical", "success", "construction", "security", "pinned", "loop", "experiment", "bug", "hotfix", "milestone", "cone", "heartbeat", "secret", "compass", "alert", "branch", "database_sync", "coffee", "lock".
-4. Section Headings: For grouping areas or architecture phases, set nodeType: "heading".
-5. Task Checklists: For to-do lists, set nodeType: "task" and include "tasks": [{"text": "item 1", "done": false}, ...].
+2. Relational Database Tables: If the user requests a database table or schema (e.g. "users table", "orders model", "schema for customers"), set nodeType: "table", title: "table_name", and provide "fields": [{"id": "1", "name": "id", "type": "UUID", "isPrimaryKey": true}, {"id": "2", "name": "email", "type": "VARCHAR"}, ...]
+3. Decision / Logic Gates: If the user requests a decision, rule, check, or branching logic, set nodeType: "shape", shapeType: "diamond", title: "Decision condition".
+4. Tech Logos: If the request refers to software or infrastructure tools, set nodeType: "logo" and logoType to one of: "netlify", "nextjs", "openai", "claude", "gemini", "react", "aws", "firebase", "supabase", "postgres", "redis", "docker", "github", "stripe", "tailwind", "typescript", "python", "graphql", "kubernetes", "linear", "figma", "slack", "discord".
+5. Road & Status Signs: If the request refers to alerts, milestones, risks, or blockers, set nodeType: "sign" and signType to one of: "warning", "stop", "launch", "goal", "idea", "critical", "success", "construction", "security", "pinned", "loop", "experiment", "bug", "hotfix", "milestone", "cone", "heartbeat", "secret", "compass", "alert", "branch", "database_sync", "coffee", "lock".
+6. Section Headings: For grouping areas or architecture phases, set nodeType: "heading".
+7. Task Checklists: For to-do lists, set nodeType: "task" and include "tasks": [{"text": "item 1", "done": false}, ...].
 
-Return ONLY a JSON object with this structure:
+Return ONLY a JSON object matching this structure:
 {
   "summary": "Short 1-sentence description of what was created",
   "nodes": [
@@ -79,10 +124,12 @@ Return ONLY a JSON object with this structure:
       "title": "Clear punchy title",
       "body": "Detailed text content or explanation",
       "color": "butter" | "sage" | "coral" | "slate" | "lavender" | "mint",
-      "nodeType": "default" | "sign" | "logo" | "heading" | "task" | "agent" | "tool" | "database" | "api" | "cloud" | "auth" | "trigger" | "ui",
+      "nodeType": "default" | "table" | "shape" | "sign" | "logo" | "heading" | "task" | "agent" | "tool" | "database" | "api" | "cloud" | "auth" | "trigger" | "ui",
       "logoType": "optional tech logo ID",
       "signType": "optional sign ID",
-      "stamp": "optional stamp (APPROVED | MVP | URGENT | WIP | HIGH IMPACT | SECURITY RISK)",
+      "shapeType": "diamond" | "cylinder" | "circle",
+      "fields": [{"id": "1", "name": "id", "type": "UUID", "isPrimaryKey": true}],
+      "stamp": "optional stamp",
       "tasks": [{"text": "action item", "done": false}]
     }
   ],
@@ -90,7 +137,7 @@ Return ONLY a JSON object with this structure:
     {
       "sourceTitle": "Exact title of source note",
       "targetTitle": "Exact title of target note",
-      "label": "triggers" | "depends on" | "queries" | "deploys to" | "reads from" | "leads to"
+      "label": "triggers" | "depends on" | "queries" | "deploys to" | "reads from" | "leads to" | "1:N"
     }
   ]
 }`;
@@ -122,20 +169,26 @@ Return ONLY a JSON object with this structure:
 
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content;
-      return JSON.parse(content);
+      const parsed = JSON.parse(content);
+      parsed._providerUsed = 'openai';
+      return parsed;
     } catch (e: any) {
       console.warn('OpenAI call failed, falling back to smart synthesis:', e);
+      const fallback = generateHeuristicPlan(prompt, existingNodes);
+      fallback._providerUsed = 'smart_mock';
+      fallback._error = e?.message || 'OpenAI call failed';
+      return fallback;
     }
   }
 
   // 2. Google Gemini Integration
   if (config.provider === 'gemini' && config.apiKey) {
+    let lastError = null;
     try {
       let rawModel = (config.model || 'gemini-2.0-flash').trim().replace(/^models\//, '');
-      const modelsToTry = [rawModel, 'gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-1.5-flash', 'gemini-pro'];
+      const modelsToTry = [rawModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
       const uniqueModels = Array.from(new Set(modelsToTry));
 
-      let lastError = null;
       for (const m of uniqueModels) {
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${config.apiKey.trim()}`;
@@ -152,7 +205,9 @@ Return ONLY a JSON object with this structure:
             const data = await res.json();
             const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
             const cleanJson = rawText.replace(/```(?:json)?\n?/g, '').trim();
-            return JSON.parse(cleanJson);
+            const parsed = JSON.parse(cleanJson);
+            parsed._providerUsed = 'gemini';
+            return parsed;
           } else {
             const err = await res.json();
             lastError = err.error?.message || `HTTP ${res.status}`;
@@ -161,9 +216,17 @@ Return ONLY a JSON object with this structure:
           lastError = e?.message;
         }
       }
-      throw new Error(lastError || 'Gemini API failed');
+      console.warn('Gemini call failed:', lastError);
+      const fallback = generateHeuristicPlan(prompt, existingNodes);
+      fallback._providerUsed = 'smart_mock';
+      fallback._error = lastError || 'Gemini API call failed';
+      return fallback;
     } catch (e: any) {
       console.warn('Gemini call failed, falling back to smart synthesis:', e);
+      const fallback = generateHeuristicPlan(prompt, existingNodes);
+      fallback._providerUsed = 'smart_mock';
+      fallback._error = e?.message || 'Gemini API call failed';
+      return fallback;
     }
   }
 
@@ -194,20 +257,219 @@ Return ONLY a JSON object with this structure:
       const data = await res.json();
       const text = data.content?.[0]?.text || '{}';
       const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-      return JSON.parse(cleanJson);
+      const parsed = JSON.parse(cleanJson);
+      parsed._providerUsed = 'anthropic';
+      return parsed;
     } catch (e: any) {
       console.warn('Anthropic call failed, falling back to smart synthesis:', e);
+      const fallback = generateHeuristicPlan(prompt, existingNodes);
+      fallback._providerUsed = 'smart_mock';
+      fallback._error = e?.message || 'Anthropic API call failed';
+      return fallback;
     }
   }
 
   // 4. Smart Local Dynamic Synthesis (Heuristic AI Engine)
-  return generateHeuristicPlan(prompt, existingNodes);
+  const plan = generateHeuristicPlan(prompt, existingNodes);
+  plan._providerUsed = 'smart_mock';
+  return plan;
 }
 
 function generateHeuristicPlan(prompt: string, existingNodes: CanvasNode[]): GeneratedPlan {
   const p = prompt.toLowerCase();
 
-  // If prompt looks like pros/cons
+  // 1. Direct Note / Sticky Creation: "add note: XYZ", "create note ...", "note: ..."
+  const noteMatch = prompt.match(/^(?:add|create|new)?\s*(?:note|sticky|card|idea)[:\s]+(.+)/i);
+  if (noteMatch && noteMatch[1]) {
+    const rawContent = noteMatch[1].trim();
+    const parts = rawContent.split(/[-–—|:\n]/);
+    const title = parts[0]?.trim() || 'New Note';
+    const body = parts.slice(1).join(' ').trim() || `Captured: "${rawContent}"`;
+    return {
+      summary: `Created note: "${title}"`,
+      nodes: [
+        {
+          title,
+          body,
+          color: 'butter',
+          nodeType: 'default',
+        },
+      ],
+      links: [],
+    };
+  }
+
+  // 2. Database Table / ERD / Schema Requests: "table users", "schema for orders", "database model", "sql"
+  if (/\b(?:table|schema|database|model|entity|erd|sql)\b/i.test(p)) {
+    const tablesFound: string[] = [];
+    const tableCandidates = ['users', 'orders', 'products', 'customers', 'invoices', 'workspaces', 'organizations', 'payments', 'posts', 'comments', 'sessions', 'audit_logs', 'items'];
+    tableCandidates.forEach(tbl => {
+      if (p.includes(tbl)) tablesFound.push(tbl);
+    });
+
+    if (tablesFound.length === 0) {
+      // Try to extract a word right after 'table' or 'schema'
+      const match = p.match(/(?:table|schema|model|entity)\s+(?:for\s+)?([a-zA-Z0-9_]+)/i);
+      tablesFound.push(match ? match[1] : 'entities');
+    }
+
+    const nodes: GeneratedPlan['nodes'] = [];
+    const links: GeneratedPlan['links'] = [];
+
+    tablesFound.forEach((tbl, idx) => {
+      const isUserLike = /user|customer|account|member/i.test(tbl);
+      const isOrderLike = /order|invoice|payment|transaction/i.test(tbl);
+
+      const fields = [
+        { id: '1', name: 'id', type: 'UUID', isPrimaryKey: true },
+        isUserLike
+          ? { id: '2', name: 'email', type: 'VARCHAR(255)', isNullable: false }
+          : isOrderLike
+          ? { id: '2', name: 'user_id', type: 'UUID', isForeignKey: true }
+          : { id: '2', name: 'name', type: 'VARCHAR(128)', isNullable: false },
+        isOrderLike
+          ? { id: '3', name: 'amount', type: 'DECIMAL(10,2)', isNullable: false }
+          : { id: '3', name: 'status', type: 'VARCHAR(50)', isNullable: false },
+        { id: '4', name: 'created_at', type: 'TIMESTAMP', isNullable: false },
+      ];
+
+      nodes.push({
+        title: tbl,
+        body: `Relational 3NF SQL table with typed primary and foreign key constraints.`,
+        color: idx % 2 === 0 ? 'butter' : 'slate',
+        nodeType: 'table',
+        fields,
+      });
+    });
+
+    if (nodes.length >= 2) {
+      links.push({
+        sourceTitle: nodes[0].title,
+        targetTitle: nodes[1].title,
+        label: '1:N references',
+      });
+    }
+
+    return {
+      summary: `Created ${nodes.length} relational SQL table${nodes.length > 1 ? 's' : ''} (${tablesFound.join(', ')})`,
+      nodes,
+      links,
+    };
+  }
+
+  // 3. Tech Stack / Microservices Architecture: "nextjs, redis, postgres, kafka, docker"
+  const TECH_MAP: Record<string, { name: string; type: string; role: string }> = {
+    nextjs: { name: 'Next.js 15 App', type: 'nextjs', role: 'Fullstack Serverless Edge Web UI' },
+    react: { name: 'React Frontend', type: 'react', role: 'Client-side SPA component tree' },
+    tailwind: { name: 'Tailwind CSS', type: 'tailwind', role: 'Modern utility-first responsive design' },
+    typescript: { name: 'TypeScript', type: 'typescript', role: 'End-to-end typed contract layer' },
+    python: { name: 'Python Service', type: 'python', role: 'Data processing & async workers' },
+    postgres: { name: 'PostgreSQL DB', type: 'postgres', role: 'Primary relational ACID store' },
+    redis: { name: 'Redis Cache', type: 'redis', role: 'In-memory fast state & rate limiting' },
+    kafka: { name: 'Apache Kafka', type: 'kafka', role: 'Distributed high-throughput event broker' },
+    docker: { name: 'Docker Container', type: 'docker', role: 'Reproducible microservice packaging' },
+    kubernetes: { name: 'Kubernetes Pods', type: 'kubernetes', role: 'Autoscaling container orchestrator' },
+    aws: { name: 'AWS Cloud', type: 'aws', role: 'Scalable cloud infrastructure' },
+    firebase: { name: 'Firebase', type: 'firebase', role: 'Real-time database and user authentication' },
+    supabase: { name: 'Supabase', type: 'supabase', role: 'Managed PostgreSQL with Row Level Security' },
+    stripe: { name: 'Stripe Billing', type: 'stripe', role: 'Secure checkout and webhook handling' },
+    openai: { name: 'OpenAI GPT-4o', type: 'openai', role: 'Frontier reasoning and embeddings' },
+    gemini: { name: 'Google Gemini', type: 'gemini', role: 'Multimodal contextual intelligence' },
+    claude: { name: 'Anthropic Claude', type: 'claude', role: 'Autonomous agentic workflow synthesis' },
+    netlify: { name: 'Netlify Edge', type: 'netlify', role: 'Global instant deployment CDN' },
+    graphql: { name: 'GraphQL Gateway', type: 'graphql', role: 'Federated schema API layer' },
+    github: { name: 'GitHub Actions', type: 'github', role: 'CI/CD testing and build deployment' },
+  };
+
+  const detectedTech: string[] = [];
+  Object.keys(TECH_MAP).forEach(techKey => {
+    if (p.includes(techKey)) detectedTech.push(techKey);
+  });
+
+  if (detectedTech.length >= 2) {
+    const nodes: GeneratedPlan['nodes'] = detectedTech.map((key, i) => {
+      const def = TECH_MAP[key];
+      return {
+        title: def.name,
+        body: def.role,
+        color: (['butter', 'mint', 'slate', 'sage', 'coral', 'lavender'] as NoteColor[])[i % 6],
+        nodeType: 'logo',
+        logoType: def.type,
+      };
+    });
+
+    const links: GeneratedPlan['links'] = [];
+    for (let i = 0; i < nodes.length - 1; i++) {
+      links.push({
+        sourceTitle: nodes[i].title,
+        targetTitle: nodes[i + 1].title,
+        label: i === 0 ? 'queries' : i === 1 ? 'streams to' : 'persists in',
+      });
+    }
+
+    return {
+      summary: `Synthesized architecture with ${detectedTech.length} connected technology nodes`,
+      nodes,
+      links,
+    };
+  }
+
+  // 4. Checklist / Task / Sprint: "todo", "task", "checklist", "sprint"
+  if (/\b(?:task|todo|checklist|sprint|backlog|steps)\b/i.test(p)) {
+    return {
+      summary: `Created sprint task checklist for: "${prompt.slice(0, 35)}"`,
+      nodes: [
+        {
+          title: `Action Plan: ${prompt.slice(0, 25)}`,
+          body: `Interactive checklist generated by WebMCP agent.`,
+          color: 'butter',
+          nodeType: 'task',
+          tasks: [
+            { text: 'Define system specifications and API contracts', done: true },
+            { text: 'Implement database models and migration scripts', done: false },
+            { text: 'Connect frontend client to backend endpoints', done: false },
+            { text: 'Run integration test suite & deploy preview', done: false },
+          ],
+        },
+      ],
+      links: [],
+    };
+  }
+
+  // 5. Decision / Gate / Conditional: "decision", "if", "gate", "condition", "validator"
+  if (/\b(?:decision|diamond|gate|condition|validator|check)\b/i.test(p)) {
+    const decisionTitle = prompt.replace(/decision|gate|check/gi, '').trim() || 'Payload Valid?';
+    return {
+      summary: `Created decision gate logic for: "${prompt.slice(0, 35)}"`,
+      nodes: [
+        {
+          title: 'Incoming Request',
+          body: 'Payload received from client application.',
+          color: 'butter',
+          nodeType: 'default',
+        },
+        {
+          title: decisionTitle,
+          body: 'Deterministic validation rule gate.',
+          color: 'coral',
+          nodeType: 'shape',
+          shapeType: 'diamond',
+        },
+        {
+          title: 'Execute Action',
+          body: 'Condition passed: proceed to database mutation.',
+          color: 'sage',
+          nodeType: 'default',
+        },
+      ],
+      links: [
+        { sourceTitle: 'Incoming Request', targetTitle: decisionTitle, label: 'evaluates' },
+        { sourceTitle: decisionTitle, targetTitle: 'Execute Action', label: 'if true' },
+      ],
+    };
+  }
+
+  // 6. Pros & Cons / Tradeoffs
   if (p.includes('pro') || p.includes('con') || p.includes('tradeoff') || p.includes('evaluate')) {
     return {
       summary: `Evaluated trade-offs for: "${prompt.slice(0, 40)}"`,
@@ -240,100 +502,37 @@ function generateHeuristicPlan(prompt: string, existingNodes: CanvasNode[]): Gen
     };
   }
 
-  // If prompt is Workflow, Toolchain, or System Architecture
-  if (p.includes('flow') || p.includes('workflow') || p.includes('tool') || p.includes('pipeline') || p.includes('arch')) {
-    return {
-      summary: `Synthesized multi-stage toolchain workflow for: "${prompt.slice(0, 40)}"`,
-      nodes: [
-        {
-          title: 'User Prompt Trigger',
-          body: 'Human input or web event dispatches natural language instruction.',
-          color: 'butter',
-          nodeType: 'trigger',
-        },
-        {
-          title: 'WebMCP Agent Engine',
-          body: 'Browser LLM matches intent against document.modelContext schemas.',
-          color: 'lavender',
-          nodeType: 'agent',
-        },
-        {
-          title: 'WebMCP Tool Dispatch',
-          body: 'Executes add_idea_node and connect_nodes in sub-20ms window context.',
-          color: 'coral',
-          nodeType: 'tool',
-        },
-        {
-          title: 'Firestore Real-Time DB',
-          body: 'Persists coordinates, author tags, and connection wire state.',
-          color: 'sage',
-          nodeType: 'database',
-        },
-        {
-          title: 'Spatial Canvas UI',
-          body: 'Smoothly renders SVG wires, physics layout, and tactile sticky notes.',
-          color: 'mint',
-          nodeType: 'ui',
-        },
-      ],
-      links: [
-        { sourceTitle: 'User Prompt Trigger', targetTitle: 'WebMCP Agent Engine', label: '1. dispatches intent' },
-        { sourceTitle: 'WebMCP Agent Engine', targetTitle: 'WebMCP Tool Dispatch', label: '2. invokes RPC tool' },
-        { sourceTitle: 'WebMCP Tool Dispatch', targetTitle: 'Firestore Real-Time DB', label: '3. syncs state' },
-        { sourceTitle: 'Firestore Real-Time DB', targetTitle: 'Spatial Canvas UI', label: '4. updates DOM 60fps' },
-      ],
-    };
-  }
-
-  // If prompt is SWOT
-  if (p.includes('swot') || p.includes('matrix')) {
-    return {
-      summary: `Generated 4-quadrant strategic matrix for: "${prompt.slice(0, 40)}"`,
-      nodes: [
-        { title: 'STRENGTHS', body: 'Unique protocol architecture, sub-20ms latency, zero-setup onboarding.', color: 'sage', nodeType: 'trigger' },
-        { title: 'WEAKNESSES', body: 'Early-stage standard awareness requiring clear developer onboarding guides.', color: 'coral', nodeType: 'default' },
-        { title: 'OPPORTUNITIES', body: 'Chrome and OpenAI pushing WebMCP as the default browser agent protocol.', color: 'mint', nodeType: 'agent' },
-        { title: 'THREATS', body: 'Incumbent tools attempting proprietary walled-garden copycats.', color: 'butter', nodeType: 'auth' },
-      ],
-      links: [
-        { sourceTitle: 'STRENGTHS', targetTitle: 'OPPORTUNITIES', label: 'leverages' },
-        { sourceTitle: 'WEAKNESSES', targetTitle: 'THREATS', label: 'vulnerable to' },
-      ],
-    };
-  }
-
-  // Default: Dynamic Topic Expansion based on user's words
-  const words = prompt.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3);
-  const topic = words.slice(0, 3).join(' ') || 'Strategic Initiative';
+  // 7. General Custom Task Decomposition:
+  // Breaks any user task into 3 clean, sequential, domain-specific execution stages!
+  const cleanPrompt = prompt.replace(/[^\w\s-]/g, '').trim();
+  const words = cleanPrompt.split(/\s+/).filter(w => w.length > 2);
+  const coreSubject = words.slice(0, 4).join(' ') || 'Architecture Task';
 
   return {
-    summary: `Structured strategic breakdown for "${prompt.slice(0, 40)}"`,
+    summary: `Structured execution plan for "${prompt.slice(0, 40)}"`,
     nodes: [
       {
-        title: `Core: ${topic}`,
-        body: `Primary anchor thesis and value driver for ${prompt}.`,
+        title: `1. Input: ${coreSubject}`,
+        body: `Initial state, trigger conditions, and context parameters for: ${prompt}.`,
         color: 'butter',
+        nodeType: 'default',
       },
       {
-        title: `Channel & Distribution`,
-        body: `Direct community distribution, developer documentation, and viral export loops.`,
+        title: `2. Execution Engine`,
+        body: `Core business logic, transformation pipeline, and validation rules.`,
         color: 'slate',
+        nodeType: 'agent',
       },
       {
-        title: `Technical Execution`,
-        body: `Sub-20ms client execution, resilient Firebase synchronization, and typed schema validation.`,
+        title: `3. Delivery & Output`,
+        body: `Final state persistence, notification dispatch, and UI rendering feedback.`,
         color: 'mint',
-      },
-      {
-        title: `Competitive Advantage`,
-        body: `Standard WebMCP native bridge vs legacy screen-scraping competitors.`,
-        color: 'sage',
+        nodeType: 'default',
       },
     ],
     links: [
-      { sourceTitle: `Core: ${topic}`, targetTitle: `Channel & Distribution`, label: 'reaches via' },
-      { sourceTitle: `Core: ${topic}`, targetTitle: `Technical Execution`, label: 'built with' },
-      { sourceTitle: `Technical Execution`, targetTitle: `Competitive Advantage`, label: 'enables' },
+      { sourceTitle: `1. Input: ${coreSubject}`, targetTitle: `2. Execution Engine`, label: 'feeds into' },
+      { sourceTitle: `2. Execution Engine`, targetTitle: `3. Delivery & Output`, label: 'produces' },
     ],
   };
 }

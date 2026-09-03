@@ -1027,6 +1027,8 @@ function CanvasAppInner() {
             signType: item.signType,
             logoType: item.logoType,
             stamp: item.stamp,
+            fields: item.fields,
+            shapeType: item.shapeType,
             tasks: item.tasks
               ? item.tasks.map((t, i) => ({
                   id: `task_${Date.now()}_${i}`,
@@ -1038,9 +1040,18 @@ function CanvasAppInner() {
         );
         createdNodeMap.set(item.title.toLowerCase().trim(), node.id);
 
+        const toolName =
+          item.nodeType === 'table'
+            ? 'add_entity_table'
+            : item.nodeType === 'logo'
+            ? 'add_logo_node'
+            : item.nodeType === 'shape'
+            ? 'add_shape_node'
+            : 'add_idea_node';
+
         addLogEntry({
-          toolName: 'add_idea_node',
-          input: { title: item.title, color: item.color, nodeType: item.nodeType },
+          toolName,
+          input: { title: item.title, color: item.color, nodeType: item.nodeType, fields: item.fields },
           output: { id: node.id, x: free.x, y: free.y },
           source: 'agent',
         });
@@ -1065,7 +1076,15 @@ function CanvasAppInner() {
         }
       });
 
-      showToast(plan.summary || `Added ${plan.nodes.length} notes and connected wires`, 'ok');
+      if (plan._error) {
+        showToast(`AI Key Notice: ${plan._error}. Used smart local synthesis.`, 'warn');
+      } else if (plan._providerUsed === 'gemini') {
+        showToast(`✨ Generated with Google Gemini: ${plan.summary}`, 'ok');
+      } else if (plan._providerUsed === 'openai') {
+        showToast(`✨ Generated with OpenAI: ${plan.summary}`, 'ok');
+      } else {
+        showToast(plan.summary || `Added ${plan.nodes.length} notes and connected wires`, 'ok');
+      }
       setTimeout(() => {
         animateLayout(calculateSmartFlowTargets(nodesRef.current, edgesRef.current));
       }, 300);
