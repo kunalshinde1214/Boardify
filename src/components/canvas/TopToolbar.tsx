@@ -459,21 +459,6 @@ export function TopToolbar({
       >
         <HelpCircle className="w-3.5 h-3.5" />
       </button>
-
-      <span className="w-px h-4 bg-[#DCD4C2] mx-0.5" />
-
-      {/* 14. Agent Studio Toggle Button */}
-      <button
-        onClick={onToggleStudio}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all whitespace-nowrap cursor-pointer ${
-          isStudioOpen
-            ? 'bg-[#E24E1B] text-white border-[#B33A10] shadow-[2px_2px_0_#1D1A16]'
-            : 'bg-[#FFFDF6] text-[#1D1A16] border-[#1D1A16] hover:bg-[#F4EFE4]'
-        }`}
-      >
-        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-        <span>Agent Studio</span>
-      </button>
     </div>
   );
 }

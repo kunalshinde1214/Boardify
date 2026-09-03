@@ -47,7 +47,7 @@ export function AgentStudioDrawer({
   if (!isOpen) return null;
 
   return (
-    <aside className="absolute top-4 right-4 bottom-4 z-40 w-80 sm:w-96 flex flex-col bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl shadow-[6px_6px_0_#1D1A16] overflow-hidden animate-note-pop">
+    <aside className="absolute top-[72px] sm:top-[76px] right-4 bottom-4 z-40 w-72 sm:w-[320px] max-w-[calc(100vw-32px)] flex flex-col bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-2xl shadow-[6px_6px_0_#1D1A16] overflow-hidden animate-note-pop">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#DCD4C2] bg-[#F4EFE4]/80 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -118,7 +118,10 @@ export function AgentStudioDrawer({
         {activeTab === 'health' && (
           <GraphHealthView
             report={healthReport}
-            onAutoTidy={onAutoTidy}
+            onAutoTidy={() => {
+              onAutoTidy();
+              onClose();
+            }}
             onRunMission={onRunMission}
             onHighlightNode={onHighlightNode}
           />

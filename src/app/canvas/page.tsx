@@ -9,6 +9,7 @@ import { AgentStudioDrawer } from '@/components/studio/AgentStudioDrawer';
 import { ExportModal } from '@/components/canvas/ExportModal';
 import { ShareDeployModal } from '@/components/canvas/ShareDeployModal';
 import { TemplatesModal } from '@/components/canvas/TemplatesModal';
+import { Sparkles } from 'lucide-react';
 import { decodeCanvasShareState } from '@/lib/netlify-deploy';
 import { AVAILABLE_SIGNS, AVAILABLE_LOGOS } from '@/components/ui/BrandIcons';
 import { GILBARBARA_LOGOS } from '@/lib/all-logos-catalog';
@@ -1200,26 +1201,32 @@ function CanvasAppInner() {
           onAddTaskNote={handleAddTaskNote}
           onOpenLogoSearch={handleOpenLogoSearch}
           onSmartArrange={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateSmartFlowTargets(nodes, edges));
             showToast('Arranged into smart hierarchical flow', 'ok');
           }}
           onDeOverlap={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateDeOverlapTargets(nodes));
             showToast('De-overlapped & spaced out all canvas notes', 'ok');
           }}
           onTidyForceDirected={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateForceDirectedTargets(nodes, edges));
             showToast('Untangled canvas with physics layout', 'ok');
           }}
           onTidyClusters={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateClusterTargets(nodes, edges));
             showToast('Tidied into clusters', 'ok');
           }}
           onTidyTimeline={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateTimelineTargets(nodes));
             showToast('Arranged by creation timeline', 'ok');
           }}
           onTidyKanban={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateKanbanTargets(nodes));
             showToast('Arranged by color categories', 'ok');
           }}
@@ -1239,6 +1246,32 @@ function CanvasAppInner() {
           onSwitchBoard={handleSwitchBoard}
         />
 
+        {/* Dedicated Floating AI Agent Studio Button - Beautifully positioned below the Action Bar */}
+        <div className="absolute top-[60px] left-1/2 -translate-x-1/2 z-40 animate-note-pop select-none">
+          <button
+            onClick={() => setIsStudioOpen(!isStudioOpen)}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border-2 border-[#1D1A16] shadow-[3px_3px_0_#1D1A16] transition-all duration-200 cursor-pointer text-xs font-bold ${
+              isStudioOpen
+                ? 'bg-[#E24E1B] text-white shadow-[1px_1px_0_#1D1A16] translate-x-[1px] translate-y-[1px]'
+                : 'bg-[#FFFDF6] text-[#1D1A16] hover:bg-[#FFE9A8] hover:-translate-y-0.5 hover:shadow-[4px_4px_0_#1D1A16]'
+            }`}
+            title="Toggle Agent Studio (Ctrl+Space)"
+          >
+            <div className="relative flex items-center justify-center">
+              <Sparkles className={`w-3.5 h-3.5 ${isStudioOpen ? 'text-amber-300 animate-spin' : 'text-[#E24E1B]'}`} />
+              <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-[#1D1A16] ${hasWebMCP ? 'bg-emerald-500 animate-pulse' : 'bg-[#E24E1B]'}`} />
+            </div>
+            <span className="font-['Space_Grotesk'] font-bold tracking-wide">AI Agent Studio</span>
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md border ${
+              isStudioOpen
+                ? 'bg-white/20 border-white/30 text-white'
+                : 'bg-[#1D1A16]/5 border-[#1D1A16]/10 text-[#6B6353]'
+            }`}>
+              {hasWebMCP ? 'WebMCP Active' : 'Ctrl+Space'}
+            </span>
+          </button>
+        </div>
+
         {/* Agent Studio Drawer */}
         <AgentStudioDrawer
           isOpen={isStudioOpen}
@@ -1252,6 +1285,7 @@ function CanvasAppInner() {
           onRunMission={runMission}
           onRunPrompt={runPrompt}
           onAutoTidy={() => {
+            setIsStudioOpen(false);
             animateLayout(calculateForceDirectedTargets(nodes, edges));
             showToast('Untangled canvas layout', 'ok');
           }}

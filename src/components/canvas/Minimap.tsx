@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CanvasNode, CanvasCamera } from '@/lib/types';
 import { getBoundingBox } from '@/lib/layouts';
-import { MapPin, Minimize2, Maximize2 } from 'lucide-react';
+import { MapPin, Minimize2, Maximize2, GripHorizontal } from 'lucide-react';
 
 interface MinimapProps {
   nodes: CanvasNode[];
@@ -23,9 +23,63 @@ export function Minimap({
   viewportWidth,
   viewportHeight,
   onNavigate,
-  isStudioOpen = false,
 }: MinimapProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number }>({
+    mouseX: 0,
+    mouseY: 0,
+    startX: 0,
+    startY: 0,
+  });
+
+  // Default position: slightly near bottom left, comfortably raised above screen bottom
+  useEffect(() => {
+    if (typeof window !== 'undefined' && pos === null) {
+      setPos({
+        x: 76,
+        y: Math.max(80, window.innerHeight - 230),
+      });
+    }
+  }, [pos]);
+
+  const handleStartDrag = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    const currentX = pos ? pos.x : 76;
+    const currentY = pos ? pos.y : (typeof window !== 'undefined' ? window.innerHeight - 230 : 550);
+
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: currentX,
+      startY: currentY,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = moveEvent.clientX - dragStartRef.current.mouseX;
+      const dy = moveEvent.clientY - dragStartRef.current.mouseY;
+
+      const maxX = typeof window !== 'undefined' ? window.innerWidth - (isCollapsed ? 120 : MINIMAP_WIDTH + 24) : 1000;
+      const maxY = typeof window !== 'undefined' ? window.innerHeight - (isCollapsed ? 60 : MINIMAP_HEIGHT + 75) : 800;
+
+      const newX = Math.max(12, Math.min(maxX, dragStartRef.current.startX + dx));
+      const newY = Math.max(60, Math.min(maxY, dragStartRef.current.startY + dy));
+
+      setPos({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   const seenNodeIds = new Set<string>();
   const uniqueNodes = nodes.filter(n => {
@@ -69,34 +123,65 @@ export function Minimap({
     onNavigate(targetWorldX, targetWorldY);
   };
 
-  const offsetClass = isStudioOpen ? 'right-84 sm:right-[404px]' : 'right-4';
+  const currentLeft = pos ? `${pos.x}px` : '76px';
+  const currentTop = pos ? `${pos.y}px` : undefined;
+  const currentBottom = pos ? undefined : '56px';
 
   if (isCollapsed) {
     return (
-      <button
-        onClick={() => setIsCollapsed(false)}
-        className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl shadow-[3px_3px_0_#1D1A16] hover:bg-[#F4EFE4] hover:-translate-y-0.5 text-xs font-bold text-[#1D1A16] transition-all duration-300 cursor-pointer absolute bottom-4 z-40 ${offsetClass}`}
-        title="Expand Radar Minimap"
+      <div
+        style={{
+          left: currentLeft,
+          top: currentTop,
+          bottom: currentBottom,
+          position: 'absolute',
+        }}
+        className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl shadow-[3px_3px_0_#1D1A16] hover:bg-[#F4EFE4] text-xs font-bold text-[#1D1A16] z-40 select-none animate-note-pop"
       >
-        <MapPin className="w-3.5 h-3.5 text-[#E24E1B]" />
-        <span className="font-mono text-[11px] font-bold">RADAR</span>
-        <span className="font-mono text-[10px] text-[#6B6353] bg-[#1D1A16]/5 px-1.5 py-0.5 rounded">
-          {Math.round(camera.z * 100)}%
-        </span>
-        <Maximize2 className="w-3 h-3 text-[#6B6353] ml-0.5" />
-      </button>
+        <div
+          onMouseDown={handleStartDrag}
+          className="cursor-grab active:cursor-grabbing p-0.5 text-[#6B6353] hover:text-[#1D1A16]"
+          title="Drag to move Radar anywhere"
+        >
+          <GripHorizontal className="w-3.5 h-3.5" />
+        </div>
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="flex items-center gap-1 cursor-pointer"
+          title="Expand Radar"
+        >
+          <MapPin className="w-3.5 h-3.5 text-[#E24E1B]" />
+          <span className="font-mono text-[11px] font-bold">RADAR</span>
+          <span className="font-mono text-[10px] text-[#6B6353] bg-[#1D1A16]/5 px-1.5 py-0.5 rounded">
+            {Math.round(camera.z * 100)}%
+          </span>
+          <Maximize2 className="w-3 h-3 text-[#6B6353] ml-0.5" />
+        </button>
+      </div>
     );
   }
 
   return (
     <div
-      className={`hidden sm:block absolute bottom-4 z-40 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl p-2 shadow-[3px_3px_0_#1D1A16] transition-all duration-300 ${offsetClass}`}
+      style={{
+        left: currentLeft,
+        top: currentTop,
+        bottom: currentBottom,
+        position: 'absolute',
+      }}
+      className="hidden sm:block z-40 bg-[#FFFDF6] border-2 border-[#1D1A16] rounded-xl p-2 shadow-[3px_3px_0_#1D1A16] select-none animate-note-pop"
     >
-      <div className="flex items-center justify-between text-[10px] font-bold text-[#6B6353] pb-1.5 px-0.5">
+      {/* Draggable Header Bar */}
+      <div
+        onMouseDown={handleStartDrag}
+        className="flex items-center justify-between text-[10px] font-bold text-[#6B6353] pb-1.5 px-0.5 cursor-grab active:cursor-grabbing border-b border-[#DCD4C2]/60 mb-1.5"
+        title="Drag header to move Radar anywhere"
+      >
         <span className="flex items-center gap-1 font-mono uppercase tracking-wider text-[#1D1A16]">
+          <GripHorizontal className="w-3 h-3 text-[#6B6353]" />
           <MapPin className="w-3 h-3 text-[#E24E1B]" /> Radar
         </span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" onMouseDown={e => e.stopPropagation()}>
           <span className="font-mono text-[9px] bg-[#1D1A16]/5 px-1.5 py-0.5 rounded text-[#1D1A16]">
             {Math.round(camera.z * 100)}%
           </span>

@@ -65,12 +65,18 @@ export interface CanvasNode {
   styleVariant?: 'sticky' | 'glass' | 'badge' | 'signpost' | 'banner' | 'clean' | 'neon';
 }
 
+export type EdgeLineStyle = 'solid' | 'dashed' | 'dotted';
+export type EdgeDirection = 'directed' | 'bidirectional' | 'undirected';
+
 export interface CanvasEdge {
   id: string;
   from: string;
   to: string;
   label?: string;
-  style?: 'solid' | 'dashed';
+  style?: 'solid' | 'dashed' | 'dotted' | 'bidirectional';
+  lineStyle?: EdgeLineStyle;
+  direction?: EdgeDirection;
+  animated?: boolean;
 }
 
 export interface CanvasCamera {
