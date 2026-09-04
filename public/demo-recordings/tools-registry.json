@@ -1,0 +1,1221 @@
+[
+  {
+    "name": "get_canvas_state",
+    "description": "Read the full whiteboard canvas: all notes, signs, tech logos, headings, checklists, stamps, and directed connection wires. Call this first to inspect and understand the active board context before taking any action.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_board_capabilities",
+    "description": "Returns the full library of available elements in Boardify: all 25+ Tech Logos, 24+ Road & Status Signs, Note Colors, Stamp Badges, Layout Algorithms, and Pre-built Templates.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "add_idea_node",
+    "description": "Create a new sticky note, sign, logo, heading, or task on the whiteboard canvas. Supports flexible parameter names (title, body, text, content, color, nodeType, logoType, signType, stamp, tasks). Auto-places near board center if coordinates are omitted.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Note headline (concise title, e.g. \"Payment Webhook\")"
+        },
+        "body": {
+          "type": "string",
+          "description": "Detailed bullet points or supporting text; newlines supported"
+        },
+        "text": {
+          "type": "string",
+          "description": "Alias for body: the note content"
+        },
+        "content": {
+          "type": "string",
+          "description": "Alias for body: the note content"
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas X position (optional; auto-finds free spot if omitted)"
+        },
+        "y": {
+          "type": "number",
+          "description": "Canvas Y position (optional; auto-finds free spot if omitted)"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ],
+          "description": "Color of the sticky note (default: butter)"
+        },
+        "nodeType": {
+          "type": "string",
+          "enum": [
+            "default",
+            "agent",
+            "tool",
+            "database",
+            "api",
+            "cloud",
+            "auth",
+            "trigger",
+            "ui",
+            "sign",
+            "logo",
+            "heading",
+            "task"
+          ],
+          "description": "Architectural role badge or element type (default: default)"
+        },
+        "signType": {
+          "type": "string",
+          "description": "Type of sign (e.g. warning, stop, launch, goal, idea, critical, success, construction, security, pinned, loop, experiment, bug, hotfix, milestone, cone, heartbeat, secret, compass, alert, branch, database_sync, coffee, lock)"
+        },
+        "logoType": {
+          "type": "string",
+          "description": "Tech logo ID (e.g. netlify, nextjs, react, openai, claude, gemini, aws, firebase, supabase, postgres, redis, docker, github, stripe, tailwind, typescript, python, graphql, kubernetes, linear, figma, slack, discord)"
+        },
+        "stamp": {
+          "type": "string",
+          "description": "Vintage rubber stamp badge (e.g. APPROVED, MVP, URGENT, WIP, HIGH IMPACT, SECURITY RISK, DEPRECATED)"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "Array of checklist strings or {text, done} objects for to-do items"
+        }
+      }
+    }
+  },
+  {
+    "name": "add_note",
+    "description": "Create a new sticky note, sign, logo, heading, or task on the whiteboard canvas. Supports flexible parameter names (title, body, text, content, color, nodeType, logoType, signType, stamp, tasks). Auto-places near board center if coordinates are omitted.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Note headline (concise title, e.g. \"Payment Webhook\")"
+        },
+        "body": {
+          "type": "string",
+          "description": "Detailed bullet points or supporting text; newlines supported"
+        },
+        "text": {
+          "type": "string",
+          "description": "Alias for body: the note content"
+        },
+        "content": {
+          "type": "string",
+          "description": "Alias for body: the note content"
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas X position (optional; auto-finds free spot if omitted)"
+        },
+        "y": {
+          "type": "number",
+          "description": "Canvas Y position (optional; auto-finds free spot if omitted)"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ],
+          "description": "Color of the sticky note (default: butter)"
+        },
+        "nodeType": {
+          "type": "string",
+          "enum": [
+            "default",
+            "agent",
+            "tool",
+            "database",
+            "api",
+            "cloud",
+            "auth",
+            "trigger",
+            "ui",
+            "sign",
+            "logo",
+            "heading",
+            "task"
+          ],
+          "description": "Architectural role badge or element type (default: default)"
+        },
+        "signType": {
+          "type": "string",
+          "description": "Type of sign (e.g. warning, stop, launch, goal, idea, critical, success, construction, security, pinned, loop, experiment, bug, hotfix, milestone, cone, heartbeat, secret, compass, alert, branch, database_sync, coffee, lock)"
+        },
+        "logoType": {
+          "type": "string",
+          "description": "Tech logo ID (e.g. netlify, nextjs, react, openai, claude, gemini, aws, firebase, supabase, postgres, redis, docker, github, stripe, tailwind, typescript, python, graphql, kubernetes, linear, figma, slack, discord)"
+        },
+        "stamp": {
+          "type": "string",
+          "description": "Vintage rubber stamp badge (e.g. APPROVED, MVP, URGENT, WIP, HIGH IMPACT, SECURITY RISK, DEPRECATED)"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "Array of checklist strings or {text, done} objects for to-do items"
+        }
+      }
+    }
+  },
+  {
+    "name": "add_tech_logo",
+    "description": "Place a dedicated Brand & Tech Logo card (e.g. Next.js, React, OpenAI GPT-4o, Anthropic Claude, Gemini, AWS Cloud, Netlify, Supabase, Postgres, Redis, Docker, GitHub, Stripe, Tailwind, TypeScript, Python, GraphQL, Kubernetes, Linear, Figma, Slack, Discord) onto the whiteboard canvas.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "logo_id": {
+          "type": "string",
+          "description": "Tech logo ID: netlify, nextjs, openai, claude, gemini, react, aws, firebase, supabase, postgres, redis, docker, github, stripe, tailwind, typescript, python, graphql, kubernetes, linear, figma, slack, discord"
+        },
+        "title": {
+          "type": "string",
+          "description": "Custom card title (defaults to official brand name if omitted)"
+        },
+        "body": {
+          "type": "string",
+          "description": "Description or architecture role details (defaults to brand overview if omitted)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Alias for body"
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas X coordinate (optional)"
+        },
+        "y": {
+          "type": "number",
+          "description": "Canvas Y coordinate (optional)"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ],
+          "description": "Background color (default: slate)"
+        }
+      },
+      "required": [
+        "logo_id"
+      ]
+    }
+  },
+  {
+    "name": "search_tech_logos",
+    "description": "Search through the full catalog of 1,900+ tech logos (including full AWS Suite with 45+ services, Vector DBs, AI models, Frameworks, Languages, DevTools) and Road & Status Signs by keyword or category.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search term (e.g. \"aws\", \"database\", \"ai\", \"lambda\", \"qdrant\", \"snowflake\", \"kafka\", \"notion\")"
+        },
+        "category": {
+          "type": "string",
+          "description": "Filter category: all, cloud, aws, ai, database, framework, infra, tool, language, analytics, payments, signs"
+        }
+      }
+    }
+  },
+  {
+    "name": "add_status_sign",
+    "description": "Place a Road & Status sign (warning, stop/hard blocker, launch/ship, goal/objective, idea/lightbulb, critical/urgent, success/approved, construction, security, pinned memo, feedback loop, experiment, bug defect, flame hotfix, milestone flag, safety cone, heartbeat health, api secret key, architecture north, incident alert, git branch, database sync, team retro, vault lock) with SVG vector rendering.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sign_type": {
+          "type": "string",
+          "description": "Sign type ID: warning, stop, launch, goal, idea, critical, success, construction, security, pinned, loop, experiment, bug, hotfix, milestone, cone, heartbeat, secret, compass, alert, branch, database_sync, coffee, lock"
+        },
+        "title": {
+          "type": "string",
+          "description": "Custom sign title (defaults to sign standard title if omitted)"
+        },
+        "body": {
+          "type": "string",
+          "description": "Sign explanation or risk details"
+        },
+        "text": {
+          "type": "string",
+          "description": "Alias for body"
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas X position (optional)"
+        },
+        "y": {
+          "type": "number",
+          "description": "Canvas Y position (optional)"
+        }
+      },
+      "required": [
+        "sign_type"
+      ]
+    }
+  },
+  {
+    "name": "add_section_heading",
+    "description": "Add a large, elegant typography banner across the whiteboard to label architectural zones, phases, or topic clusters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Section title (e.g. \"Phase 1: Agentic Ingestion\", \"Frontend Services\")"
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Optional subtitle or brief description"
+        },
+        "text": {
+          "type": "string",
+          "description": "Alias for subtitle"
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas X position (optional)"
+        },
+        "y": {
+          "type": "number",
+          "description": "Canvas Y position (optional)"
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  {
+    "name": "add_task_checklist",
+    "description": "Create an interactive checklist note with checkable to-do items and progress counters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Checklist headline (e.g. \"Sprint Deliverables\")"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "Array of task strings (e.g. [\"Implement auth\", \"Setup Redis cache\", \"Run E2E tests\"]) or objects with text and done flags"
+        },
+        "body": {
+          "type": "string",
+          "description": "Optional introductory note context"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ],
+          "description": "Sticky note color"
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas X coordinate"
+        },
+        "y": {
+          "type": "number",
+          "description": "Canvas Y coordinate"
+        }
+      },
+      "required": [
+        "title",
+        "tasks"
+      ]
+    }
+  },
+  {
+    "name": "update_node",
+    "description": "Update the text content, title, color, position, type, stamp, or tasks of an existing node.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "description": "ID of the node to update"
+        },
+        "title": {
+          "type": "string",
+          "description": "New title (optional)"
+        },
+        "body": {
+          "type": "string",
+          "description": "New body/text content (optional)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Alias for body: new text content (optional)"
+        },
+        "content": {
+          "type": "string",
+          "description": "Alias for body: new text content (optional)"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ],
+          "description": "New color (optional)"
+        },
+        "nodeType": {
+          "type": "string",
+          "enum": [
+            "default",
+            "agent",
+            "tool",
+            "database",
+            "api",
+            "cloud",
+            "auth",
+            "trigger",
+            "ui",
+            "sign",
+            "logo",
+            "heading",
+            "task"
+          ],
+          "description": "New node type (optional)"
+        },
+        "signType": {
+          "type": "string",
+          "description": "New sign type (optional)"
+        },
+        "logoType": {
+          "type": "string",
+          "description": "New tech logo ID (optional)"
+        },
+        "stamp": {
+          "type": "string",
+          "description": "Rubber stamp badge (optional)"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "New checklist tasks array (optional)"
+        },
+        "x": {
+          "type": "number",
+          "description": "New X position (optional)"
+        },
+        "y": {
+          "type": "number",
+          "description": "New Y position (optional)"
+        }
+      },
+      "required": [
+        "node_id"
+      ]
+    }
+  },
+  {
+    "name": "append_text_to_note",
+    "description": "Append text or new bullet points to the body of an existing note without overwriting previous content.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "description": "ID of the node to update"
+        },
+        "text": {
+          "type": "string",
+          "description": "Text or bullet points to append"
+        },
+        "body": {
+          "type": "string",
+          "description": "Alias for text"
+        }
+      },
+      "required": [
+        "node_id"
+      ]
+    }
+  },
+  {
+    "name": "delete_node",
+    "description": "Delete a single note from the canvas. Any connection wires attached to it are cleaned up automatically.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "description": "ID of the node to delete"
+        }
+      },
+      "required": [
+        "node_id"
+      ]
+    }
+  },
+  {
+    "name": "connect_nodes",
+    "description": "Draw a directional connection wire between two notes with an optional semantic relationship label.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "description": "ID of the origin node"
+        },
+        "target_id": {
+          "type": "string",
+          "description": "ID of the destination node"
+        },
+        "label": {
+          "type": "string",
+          "description": "Relationship description (e.g. \"leads to\", \"depends on\", \"triggers\", \"reads from\")"
+        }
+      },
+      "required": [
+        "source_id",
+        "target_id"
+      ]
+    }
+  },
+  {
+    "name": "arrange_layout",
+    "description": "Smoothly rearrange all notes on the canvas using an organizational preset algorithm.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": [
+            "smart_flow",
+            "clusters",
+            "timeline",
+            "kanban",
+            "grid"
+          ],
+          "description": "Layout algorithm to apply (smart_flow, clusters, timeline, kanban, grid)"
+        }
+      },
+      "required": [
+        "preset"
+      ]
+    }
+  },
+  {
+    "name": "highlight_node",
+    "description": "Pan the camera directly to a specific note and render a glowing spotlight beacon with an explanation bubble.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "description": "ID of the node to focus"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Short note explaining why the agent is focusing here"
+        }
+      },
+      "required": [
+        "node_id"
+      ]
+    }
+  },
+  {
+    "name": "batch_create_nodes",
+    "description": "Create multiple connected notes, tech logos, signs, headings, or tasks at once with automatic link creation and layout.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "Array of items to create (each can specify title, body/text, color, nodeType, logoType, signType, tasks)"
+        },
+        "links": {
+          "type": "array",
+          "description": "Array of links connecting nodes by title, index, or ID (e.g. [{ sourceTitle: \"A\", targetTitle: \"B\", label: \"leads to\" }])"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    }
+  },
+  {
+    "name": "search_canvas",
+    "description": "Search across all note titles, bodies, checklists, and tags on the canvas, highlighting matching nodes and returning coordinates.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search term or keyword"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "clear_canvas",
+    "description": "Wipe all notes and links from the canvas to start completely fresh. Destructive action; requires confirm: true.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "confirm": {
+          "type": "boolean",
+          "description": "Must be explicitly set to true to execute"
+        }
+      },
+      "required": [
+        "confirm"
+      ]
+    }
+  },
+  {
+    "name": "export_canvas",
+    "description": "Export the current whiteboard as a formatted Markdown executive brief, Mermaid graph diagram, or JSON state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "mermaid",
+            "json"
+          ],
+          "description": "Export format (markdown, mermaid, or json)"
+        }
+      },
+      "required": [
+        "format"
+      ]
+    }
+  },
+  {
+    "name": "cluster_by_topic",
+    "description": "Re-organize canvas notes into categorized visual columns and connect them to section headers.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "create_new_board",
+    "description": "Create a fresh, dedicated whiteboard canvas for a new project or separate architecture diagram.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title or topic for the new canvas"
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  {
+    "name": "get_board_summary",
+    "description": "Returns a high-level semantic synopsis of the canvas: coherence score, human vs agent ratio, orphan notes, central bottlenecks, and dominant themes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_node_context",
+    "description": "Inspect the deep local graph context around a specific note: incoming parent notes, outgoing child notes, relationship labels, and connections.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "description": "ID of the node to inspect"
+        }
+      },
+      "required": [
+        "node_id"
+      ]
+    }
+  },
+  {
+    "name": "get_templates_list",
+    "description": "List all pre-built strategy, engineering, product, and launch templates available in Boardify.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "apply_template",
+    "description": "Load and instantiate a complete pre-built strategy or engineering template directly onto the whiteboard canvas.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "template_id": {
+          "type": "string",
+          "description": "ID of the template to apply (e.g. \"startup-gtm\", \"yc-pitch-deck\", \"multi-agent-swarm\")"
+        }
+      },
+      "required": [
+        "template_id"
+      ]
+    }
+  },
+  {
+    "name": "render_diagram_dsl",
+    "description": "Render an entire software/cloud architecture or flowchart on the whiteboard from concise Diagram-as-Code DSL or Mermaid syntax in ONE call with automatic topological DAG layout.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dsl": {
+          "type": "string",
+          "description": "Diagram DSL or Mermaid text (e.g. `Client [icon: react] -> Gateway [icon: aws-api-gateway] -> Lambda [icon: aws-lambda] -> DB [icon: aws-dynamodb]`). Supports all 1,882+ logos and road signs."
+        },
+        "direction": {
+          "type": "string",
+          "description": "Flow direction: \"LR\" (Left to Right) or \"TB\" (Top to Bottom). Default: \"LR\""
+        },
+        "append": {
+          "type": "boolean",
+          "description": "Whether to append to the existing board (true) or replace the canvas (false). Default: false"
+        }
+      },
+      "required": [
+        "dsl"
+      ]
+    }
+  },
+  {
+    "name": "export_diagram_dsl",
+    "description": "Export the current whiteboard canvas into human-readable, diffable Eraser-style DSL or Mermaid flowchart code for LLM reasoning or documentation.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Format to export: \"dsl\" (Eraser/WebMCP DSL) or \"mermaid\" (Mermaid Flowchart). Default: \"dsl\""
+        }
+      }
+    }
+  },
+  {
+    "name": "place_relative_to",
+    "description": "Place a new note, logo, or sign relative to an existing anchor node (below, right, left, above) without guessing coordinates, and optionally draw a connecting wire.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "anchor_id": {
+          "type": "string",
+          "description": "ID or title of the existing anchor node"
+        },
+        "position": {
+          "type": "string",
+          "description": "Relative position: \"below\", \"right\", \"left\", \"above\" (default: \"right\")"
+        },
+        "distance": {
+          "type": "number",
+          "description": "Distance in pixels from anchor node (default: 260)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title or label of the new note/logo"
+        },
+        "body": {
+          "type": "string",
+          "description": "Description or details"
+        },
+        "node_type": {
+          "type": "string",
+          "description": "Node type: default, logo, sign, database, api, agent"
+        },
+        "logo_id": {
+          "type": "string",
+          "description": "Logo ID (e.g. \"aws-lambda\", \"react\", \"postgres\") if node_type is logo"
+        },
+        "sign_type": {
+          "type": "string",
+          "description": "Sign type (e.g. \"warning\", \"stop\", \"launch\") if node_type is sign"
+        },
+        "color": {
+          "type": "string",
+          "description": "Color: butter, sage, coral, slate, lavender, mint"
+        },
+        "connect_from_anchor": {
+          "type": "boolean",
+          "description": "Automatically draw a connecting wire from anchor to new note (default: true)"
+        },
+        "connection_label": {
+          "type": "string",
+          "description": "Optional text label on the connecting wire"
+        }
+      },
+      "required": [
+        "anchor_id"
+      ]
+    }
+  },
+  {
+    "name": "align_and_distribute_nodes",
+    "description": "Align multiple nodes along an axis (left, center, right, top, middle, bottom) and/or evenly distribute them with clean spacing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node_ids": {
+          "type": "array",
+          "description": "Optional array of node IDs to align (if omitted, all canvas nodes are organized)"
+        },
+        "alignment": {
+          "type": "string",
+          "description": "Alignment axis: \"left\", \"center\", \"right\", \"top\", \"middle\", \"bottom\""
+        },
+        "distribution": {
+          "type": "string",
+          "description": "Even distribution: \"horizontal\" or \"vertical\""
+        },
+        "spacing": {
+          "type": "number",
+          "description": "Spacing between distributed nodes (default: 180)"
+        }
+      }
+    }
+  },
+  {
+    "name": "inspect_visual_hierarchy",
+    "description": "Analyze whiteboard spatial geometry and visual hierarchy. Detects overlapping notes, disconnected orphan nodes, bounding-box extent, and returns layout quality diagnostics for closed-loop AI evaluation.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "capture_canvas_screenshot",
+    "description": "Capture a visual snapshot of the whiteboard for visual QA or embedding in reports.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "create_checkpoint",
+    "description": "Create a named milestone checkpoint of the current canvas state for safe rollback before executing large modifications.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name or description of the checkpoint (e.g. \"Pre-Refactor Architecture\")"
+        }
+      }
+    }
+  },
+  {
+    "name": "restore_checkpoint",
+    "description": "Restore the canvas state to a previously saved checkpoint by name or ID.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id_or_name": {
+          "type": "string",
+          "description": "The ID or name of the checkpoint to restore"
+        }
+      },
+      "required": [
+        "checkpoint_id_or_name"
+      ]
+    }
+  },
+  {
+    "name": "list_checkpoints",
+    "description": "List all available canvas milestone checkpoints with timestamp and node counts.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "undo_last_action",
+    "description": "Undo the last canvas modification (creating, deleting, or moving notes).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "redo_action",
+    "description": "Redo the previously undone canvas action.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "select_canvas_elements",
+    "description": "Selects one or more nodes/elements on the whiteboard canvas by ID, or selects all nodes, or clears selection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of node IDs to select."
+        },
+        "selectAll": {
+          "type": "boolean",
+          "description": "Set to true to select all elements currently on the canvas."
+        },
+        "clearSelection": {
+          "type": "boolean",
+          "description": "Set to true to clear all active selections."
+        }
+      }
+    }
+  },
+  {
+    "name": "resize_node",
+    "description": "Resizes a note, logo, heading, or sign element to specified width/height and adjusts typography font size.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Node ID to resize."
+        },
+        "width": {
+          "type": "number",
+          "description": "New width in pixels (140 to 800)."
+        },
+        "height": {
+          "type": "number",
+          "description": "New height in pixels (80 to 1000)."
+        },
+        "sizePreset": {
+          "type": "string",
+          "enum": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ],
+          "description": "Quick size preset: S (180px), M (240px), L (340px), XL (480px)."
+        },
+        "fontSize": {
+          "type": "string",
+          "enum": [
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "description": "Typography scale for title and body."
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "edit_node_content",
+    "description": "Edits the rich content, title, body, markdown, color, tasks, or styling of a canvas note or architecture element.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Node ID to edit."
+        },
+        "title": {
+          "type": "string",
+          "description": "Updated title header."
+        },
+        "body": {
+          "type": "string",
+          "description": "Updated body text, markdown description, or bullet points."
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ],
+          "description": "Sticky note color theme."
+        },
+        "fontSize": {
+          "type": "string",
+          "enum": [
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "description": "Typography font scale."
+        },
+        "tasks": {
+          "type": "array",
+          "description": "Checklist items array [{ id?: string, text: string, done?: boolean }]."
+        },
+        "stamp": {
+          "type": "string",
+          "description": "Rubber stamp label (e.g. APPROVED, WIP, BLOCKER, DONE)."
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "duplicate_node",
+    "description": "Duplicates an existing canvas node, placing a clone slightly offset with matching content and styling.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID of node to clone."
+        },
+        "offsetX": {
+          "type": "number",
+          "description": "Horizontal offset in pixels (default 40)."
+        },
+        "offsetY": {
+          "type": "number",
+          "description": "Vertical offset in pixels (default 40)."
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "batch_edit_notes",
+    "description": "Performs batch updates across multiple notes (e.g. adjust width, color, or font size across all selected notes).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "updates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              },
+              "width": {
+                "type": "number"
+              },
+              "fontSize": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "description": "Array of node update payloads."
+        }
+      },
+      "required": [
+        "updates"
+      ]
+    }
+  },
+  {
+    "name": "scale_selection",
+    "description": "Scales the dimensions of multiple notes by a multiplier factor (e.g. 1.25 to enlarge by 25% or 0.8 to shrink by 20%).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of node IDs to scale. Omit to scale all nodes on canvas."
+        },
+        "scaleFactor": {
+          "type": "number",
+          "description": "Scale multiplier (e.g. 1.25 = +25% size, 0.8 = -20% size)."
+        }
+      },
+      "required": [
+        "scaleFactor"
+      ]
+    }
+  },
+  {
+    "name": "deoverlap_canvas",
+    "description": "Runs elastic AABB collision resolution to push apart any overlapping notes on the canvas while preserving relative positioning.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "margin": {
+          "type": "number",
+          "description": "Separation margin in pixels (default 45)."
+        }
+      }
+    }
+  },
+  {
+    "name": "add_entity_table",
+    "description": "Creates a relational database entity table card with schema columns, types (UUID, VARCHAR, INT, TIMESTAMP), and PK/FK keys.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table_name": {
+          "type": "string",
+          "description": "Name of the database table (e.g. users, orders)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional table description or notes"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "isPrimaryKey": {
+                "type": "boolean"
+              },
+              "isForeignKey": {
+                "type": "boolean"
+              },
+              "foreignTable": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "table_name"
+      ]
+    }
+  },
+  {
+    "name": "add_shape_node",
+    "description": "Places a geometric shape node on the canvas (diamond decision, cylinder storage, hexagon microservice, circle state, cloud VPC, or process box).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "shape_type": {
+          "type": "string",
+          "enum": [
+            "diamond",
+            "cylinder",
+            "hexagon",
+            "circle",
+            "cloud",
+            "rectangle"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "description": "Headline / name for the shape"
+        },
+        "body": {
+          "type": "string",
+          "description": "Supporting details or logic"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "butter",
+            "sage",
+            "coral",
+            "slate",
+            "lavender",
+            "mint"
+          ]
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "shape_type",
+        "title"
+      ]
+    }
+  }
+]

@@ -23,36 +23,62 @@ export function findFreeSpot(
   nodes: CanvasNode[],
   startX: number,
   startY: number,
-  w = 230,
+  w = 240,
   h = 160
 ): { x: number; y: number } {
-  let x = startX;
-  let y = startY;
-  const padding = 40;
+  const padding = 28;
+  const stepX = w + padding;
+  const stepY = h + padding;
 
-  for (let attempt = 0; attempt < 500; attempt++) {
+  // Outward spiral offsets: try center, then right, then bottom-right, then down, etc.
+  const searchOffsets: [number, number][] = [
+    [0, 0],
+    [1, 0],
+    [0, 1],
+    [1, 1],
+    [-1, 0],
+    [0, -1],
+    [2, 0],
+    [1, -1],
+    [2, 1],
+    [-1, 1],
+    [0, 2],
+    [1, 2],
+    [2, -1],
+    [-1, -1],
+    [3, 0],
+    [3, 1],
+  ];
+
+  for (const [ox, oy] of searchOffsets) {
+    const testX = startX + ox * stepX;
+    const testY = startY + oy * stepY;
+
     let clash = false;
     for (const n of nodes) {
       const nw = n.width || w;
       const nh = n.height || h;
       if (
-        x < n.x + nw + padding &&
-        x + w + padding > n.x &&
-        y < n.y + nh + padding &&
-        y + h + padding > n.y
+        testX < n.x + nw + padding &&
+        testX + w + padding > n.x &&
+        testY < n.y + nh + padding &&
+        testY + h + padding > n.y
       ) {
         clash = true;
         break;
       }
     }
-    if (!clash) return { x: Math.round(x), y: Math.round(y) };
-    y += 70;
-    if (y > startY + 800) {
-      y = startY;
-      x += 290;
+    if (!clash) {
+      return { x: Math.round(testX), y: Math.round(testY) };
     }
   }
-  return { x: Math.round(startX), y: Math.round(startY) };
+
+  // Fallback: place immediately to the right of the rightmost node
+  let maxRight = startX;
+  nodes.forEach(n => {
+    maxRight = Math.max(maxRight, n.x + (n.width || w) + padding);
+  });
+  return { x: Math.round(maxRight), y: Math.round(startY) };
 }
 
 export function getConnectedComponents(nodes: CanvasNode[], edges: CanvasEdge[]): CanvasNode[][] {
@@ -107,14 +133,13 @@ export function calculateSmartFlowTargets(nodes: CanvasNode[], edges: CanvasEdge
   const multiNodeComps = comps.filter(c => c.length > 1);
   const orphanNodes = comps.filter(c => c.length === 1).map(c => c[0]);
 
-  const COL_PITCH = 360; // 240px note width + 120px wire gap
-  const ROW_PITCH = 210; // 150px note height + 60px vertical margin
-  const COMPONENT_GAP = 140; // Spacing between separate workflow diagrams
+  const COL_PITCH = 340; // 240px note width + 100px wire gap
+  const ROW_PITCH = 190; // 140px note height + 50px vertical margin
+  const COMPONENT_GAP = 120; // Spacing between separate workflow diagrams
 
-  let currentBandY = 0;
-  const positionedBoxes: { minX: number; maxX: number; minY: number; maxY: number }[] = [];
+  let currentBandX = 0;
 
-  // 2. Position each connected workflow chart
+  // 2. Position each connected workflow chart side-by-side
   multiNodeComps.forEach(comp => {
     const compNodeIds = new Set(comp.map(n => n.id));
     const compEdges = edges.filter(e => compNodeIds.has(e.from) && compNodeIds.has(e.to));
@@ -184,9 +209,9 @@ export function calculateSmartFlowTargets(nodes: CanvasNode[], edges: CanvasEdge
 
     sortedLevels.forEach(lvl => {
       const colNodes = columns.get(lvl)!;
-      const colX = lvl * COL_PITCH;
+      const colX = currentBandX + lvl * COL_PITCH;
       const colHeight = colNodes.length * ROW_PITCH;
-      const startY = currentBandY + (compHeight - colHeight) / 2;
+      const startY = (compHeight - colHeight) / 2;
 
       colNodes.forEach((n, rowIndex) => {
         targets.set(n.id, {
@@ -196,18 +221,19 @@ export function calculateSmartFlowTargets(nodes: CanvasNode[], edges: CanvasEdge
       });
     });
 
-    currentBandY += compHeight + COMPONENT_GAP;
+    const compWidth = Math.max(1, sortedLevels.length) * COL_PITCH;
+    currentBandX += compWidth + COMPONENT_GAP;
   });
 
-  // 3. Position isolated orphan notes in a clean grid below the diagrams
+  // 3. Position isolated orphan notes in a clean grid alongside
   if (orphanNodes.length > 0) {
-    const orphanCols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(orphanNodes.length))));
+    const orphanCols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(orphanNodes.length))));
     orphanNodes.forEach((n, idx) => {
       const c = idx % orphanCols;
       const r = Math.floor(idx / orphanCols);
       targets.set(n.id, {
-        x: Math.round(c * COL_PITCH),
-        y: Math.round(currentBandY + r * ROW_PITCH),
+        x: Math.round(currentBandX + c * COL_PITCH),
+        y: Math.round(r * ROW_PITCH),
       });
     });
   }

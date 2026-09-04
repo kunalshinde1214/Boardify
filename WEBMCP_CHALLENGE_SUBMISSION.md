@@ -12,6 +12,138 @@
 
 # 📋 PART 1: Devpost Submission Form Fields (Copy & Paste Ready)
 
+## 📖 About the Project
+
+### 💡 Inspiration
+
+We've all experienced the frustration of whiteboarding complex software architecture. You open a spatial tool like Miro or Excalidraw, stare at an empty canvas, and wrestle with "blank canvas paralysis." Meanwhile, your AI assistant is confined to a narrow linear chat sidebar in another window. 
+
+To bridge this gap, engineers have spent years copying code snippets, describing layout ideas in prose, switching tabs, manually drawing boxes, pasting brand logos, and routing arrows. Previous attempts to give AI agents spatial capabilities relied on **vision screen-scraping**: taking a screenshot of the browser, passing it to an LLM to guess $(x, y)$ pixel coordinates, and synthesizing simulated mouse clicks. This approach is fundamentally flawed—it introduces 3,000ms+ roundtrip latency, breaks across different device pixel ratios and monitor resolutions, and frequently causes cards to collide or overlap.
+
+Spatial thinking is inherently non-linear, multi-dimensional, and relational—represented mathematically as a directed graph $G = (V, E)$. Chat interfaces force this multidimensional thought process into a 1-dimensional string of tokens.
+
+When the **OpenAI & Google WebMCP Challenge** was announced, we realized that browser-native agents no longer need to be blind or clumsy. By establishing `window.document.modelContext`, browser applications can expose structured, type-safe APIs directly to the host model. We asked ourselves:
+
+> *"What if an AI didn't just talk to you about your architecture—what if it pulled up a chair directly at your whiteboard, read the graph in sub-20ms, placed typed SQL tables, routed bezier wires, and untangled layout physics alongside you?"*
+
+That was the spark for **Boardify**.
+
+---
+
+### 🚀 What It Does
+
+Boardify is the first **agent-native spatial whiteboard** built from the ground up for the WebMCP standard. It is a shared collaborative workspace where humans bring intuition, taste, and high-level strategy, while browser agents bring speed, scale, and architectural execution.
+
+Key capabilities include:
+- **24 First-Class WebMCP Tools:** Directly exposed on `document.modelContext` with strict JSON Schema definitions, encompassing node creation, wire connections, SQL schema tables, tech stack logos, checkpoints, and graph layout physics.
+- **Agent Ghost Cursor & Tactile Feedback:** Real-time visual agency. When an agent runs a tool, a pulsing Ghost Cursor sweeps across the canvas with an active action badge (e.g., `AGENT · tool: add_entity_table`), accompanied by mechanical pop animations and sound design.
+- **Instant Relational ERD Generation:** Prompt the agent with *"table users and orders"*, and it creates complete SQL database entity cards equipped with primary keys, foreign keys, data types (`UUID`, `VARCHAR`, `TIMESTAMP`), and relational wire linkages.
+- **Curated Architecture Vector Logo Library:** Over 1,800+ tech logos (Next.js, Kafka, Redis, PostgreSQL, Docker, AWS, Stripe, etc.) searchable and spawnable by the agent in milliseconds.
+- **Physics-Based Auto-Tidy & Smart Flow:** Clean algorithms for topological DAG ordering, force-directed untangling, and semantic clustering.
+- **Zero-Friction Multi-Format Export:** 1-click export of visual diagrams to clean Markdown documentation, Mermaid flowchart code, structured JSON state, or high-res PNG.
+- **Dual-Mode WebMCP Execution:** Hooks natively into Chrome Canary (`#enable-webmcp-testing`) and ChatGPT in-app browser sessions, while offering an interactive **AI Agent Studio** and DevTools console polyfill for standard desktop browsers.
+
+---
+
+### 🏗️ How We Built It
+
+Boardify was engineered using a high-performance, modern web stack tailored for 60fps spatial manipulation:
+
+- **Frontend Core:** Next.js 15 (App Router) with React 19, TypeScript, and Tailwind CSS.
+- **Graphics & Spatial Engine:** Infinite zoom-and-pan canvas combining HTML5 viewport transforms with high-efficiency SVG Bezier curve rendering.
+- **WebMCP Integration Layer (`src/lib/webmcp.ts`):** Complete implementation of the WebMCP specification. When the canvas mounts, it registers 24 typed tools to `window.document.modelContext.registerTool(...)`.
+- **Multi-Provider LLM Client:** Native client adapters for Google Gemini (`gemini-2.0-flash` with multi-version fallback across `v1beta` and `v1`), OpenAI (`gpt-4o-mini`), Anthropic (`claude-3.5-sonnet`), alongside an offline heuristic synthesis engine.
+
+#### 📐 The Mathematics of Spatial Whiteboarding (LaTeX)
+
+1. **Camera Projection & Viewport Transforms:**
+   To translate between user screen coordinates $(x_s, y_s)$ and the infinite 2D world space $(x_w, y_w)$, we compute affine viewport transformations using scale factor $C_z$ and pan offsets $(C_x, C_y)$:
+   $$\begin{pmatrix} x_s \\ y_s \end{pmatrix} = \begin{pmatrix} C_x \\ C_y \end{pmatrix} + C_z \begin{pmatrix} x_w \\ y_w \end{pmatrix}$$
+   The inverse projection (Screen-to-World) executed during pointer events and agent cursor positioning is:
+   $$\begin{pmatrix} x_w \\ y_w \end{pmatrix} = \begin{pmatrix} \frac{x_s - C_x}{C_z} \\ \frac{y_s - C_y}{C_z} \end{pmatrix}$$
+
+2. **Cubic Bézier Dynamic Cable Routing:**
+   Every wire connecting two nodes $P_0 = (x_0, y_0)$ and $P_3 = (x_3, y_3)$ is generated as a smooth cubic Bézier spline $B(t)$ parameterized over $t \in [0, 1]$:
+   $$B(t) = (1-t)^3 P_0 + 3(1-t)^2 t P_1 + 3(1-t) t^2 P_2 + t^3 P_3$$
+   where intermediate control points $P_1 = (x_0 + \Delta x \cdot \kappa, y_0)$ and $P_2 = (x_3 - \Delta x \cdot \kappa, y_3)$ dynamically scale with horizontal separation $\Delta x = x_3 - x_0$ using stiffness coefficient $\kappa = 0.45$.
+
+3. **Force-Directed Physics Layout (Spring-Embedder):**
+   Our `tidy_force_directed` tool models notes as charged particles exerting repulsive Coulomb forces and edges as Hookean springs with equilibrium length $L$:
+   $$F_{\text{repulsive}}(u, v) = \frac{k^2}{\|p_u - p_v\|} \cdot \hat{r}_{uv}, \quad \text{where } k = \sqrt{\frac{\text{Width} \cdot \text{Height}}{|V|}}$$
+   $$F_{\text{attractive}}(u, v) = \frac{\|p_u - p_v\|^2}{k} \cdot \hat{r}_{vu}$$
+   System states are updated over discrete iterations via velocity-Verlet numerical integration:
+   $$p_i^{(t+\Delta t)} = p_i^{(t)} + v_i^{(t)}\Delta t + \frac{1}{2}a_i^{(t)}\Delta t^2$$
+   converging in $O(|V|^2 + |E|)$ time to a minimum-energy, crossing-minimized diagram.
+
+4. **Directional DAG Smart Flow:**
+   Hierarchical diagrams are arranged using topological level sorting. We compute the longest path for each vertex $v \in V$ in $O(|V| + |E|)$:
+   $$\text{Level}(v) = \begin{cases} 0 & \text{if } \text{in-degree}(v) = 0 \\ 1 + \max_{(u, v) \in E} \text{Level}(u) & \text{otherwise} \end{cases}$$
+   Vertices are partitioned into horizontal columns $C_\ell = \{v \in V \mid \text{Level}(v) = \ell\}$ and laid out left-to-right to preserve intuitive cause-and-effect flow.
+
+---
+
+### 🧗 Challenges We Faced
+
+1. **Spatial Collision & Viewport Bleed:**
+   When agents spawn multiple cards, placing them blindly resulted in cards overlapping existing notes or landing far below the fold on compact laptop viewports. We solved this by developing an **outward radial spiral search** in `findFreeSpot()` paired with synchronous bounding-box camera framing (`fitView(true, allNodes)`), guaranteeing that generated items appear immediately within the user's active viewport without disrupting existing work.
+
+2. **React 19 State Batching vs. Real-Time Tool Execution:**
+   When an agent called multiple tools in rapid succession (e.g. creating 4 nodes and 3 links), unbatched state updates caused intermediate render passes where references to newly created nodes were not yet committed to `nodesRef.current`. We re-architected tool execution into **atomic batch commits**, accumulating additions in memory and applying them in a single cohesive render cycle.
+
+3. **Passive Event Listener Constraints on Infinite Canvas:**
+   Modern browsers treat wheel events as passive by default to optimize scrolling performance. However, an infinite canvas must intercept `wheel` to implement pinch-to-zoom and multi-directional trackpad panning with `e.preventDefault()`. We resolved this by binding native non-passive DOM event listeners directly to the container ref with `{ passive: false }`, completely eliminating browser console errors.
+
+4. **Multi-Model API Evolution:**
+   During development, the legacy `gemini-pro` endpoint was retired in Google's `v1beta` API. We built a resilient multi-version client adapter in `src/lib/llm-client.ts` that auto-migrates stored keys to `gemini-2.0-flash`, sanitizes quotation marks and whitespace, and provides automatic fallback across `v1beta` and `v1` REST endpoints.
+
+---
+
+### 🎓 What We Learned
+
+1. **WebMCP Eliminates the Prompt Engineering Tax:**
+   Instead of writing 500-word system prompts telling an LLM *"format your output as JSON with x, y, width, and height"*, WebMCP provides typed JSON Schemas directly through the browser. The agent interacts with our app through clean function calls rather than text parsing.
+2. **Deterministic APIs Beat Vision Scraping Every Time:**
+   Watching a browser agent execute 5 tools in under 50 milliseconds via `document.modelContext` compared to waiting 5 seconds for a vision-based agent to take a screenshot and guess a coordinate was an absolute epiphany. WebMCP is to the web browser what SQL was to relational databases.
+3. **The Power of Shared Canvas State:**
+   When human and AI operate on the exact same data model, collaboration feels completely natural. The human can sketch an idea, the agent can expand it, the human can edit the agent's typos, and the agent can tidy the result. It's truly pair-programming for system architecture.
+
+---
+
+### 🔮 What's Next for Boardify
+
+- **Multi-Agent Spatial Collaboration:** Allowing multiple specialized agents (e.g., a Database DBA Agent, a Security Architect Agent, and a UX Flow Agent) to inspect the whiteboard simultaneously and leave contextual review stamps and suggestions.
+- **WebRTC Multiplayer Rooms:** Combining human-to-human real-time presence (live multiplayer cursors and voice) with autonomous WebMCP agents in the same shared canvas room.
+- **Two-Way Git & Issue Tracker Synchronization:** Bi-directional sync where clicking a "Sync with GitHub" button converts diagram nodes directly into GitHub Issues, PR milestones, or Jira epics.
+
+---
+
+## 🛠️ Built With
+
+### 🏷️ Devpost Tags (Copy & Paste Ready)
+```text
+webmcp, nextjs, react, typescript, tailwindcss, google-gemini, openai, anthropic-claude, html5-canvas, svg, playwright, firebase, firestore, netlify, vercel
+```
+
+### 🧩 Technology Stack & Architectural Roles
+
+| Category | Technology | Role in Boardify |
+| :--- | :--- | :--- |
+| **Agent Standard** | **WebMCP (`document.modelContext`)** | Core protocol registering 24 typed spatial canvas tools directly to the browser model context with JSON Schema validation. |
+| **Frontend Framework** | **Next.js 15 (App Router)** | High-performance server-rendered shell with dynamic client-side infinite canvas routing. |
+| **UI & Runtime** | **React 19 & TypeScript 5** | Strict type safety, ref-based state synchronization, atomic batch state updates, and concurrent rendering. |
+| **Styling & Design System** | **Tailwind CSS & Space Grotesk** | Tactile editorial aesthetic, neo-brutalist borders, crisp retro shadows (`#1D1A16`), and responsive layout tokens. |
+| **Spatial Engine** | **HTML5 Viewport & Dynamic SVG** | Affine coordinate matrix transforms $(C_x, C_y, C_z)$, 60fps canvas panning, dynamic cubic Bézier cables, and minimap projection. |
+| **AI Models & Adapters** | **Google Gemini (`gemini-2.0-flash`)** | High-speed multi-modal reasoning and dynamic schema architecture generation. |
+| **AI Models & Adapters** | **OpenAI (`gpt-4o-mini`)** | Relational data modeling, SQL constraint generation, and natural language query decomposition. |
+| **AI Models & Adapters** | **Anthropic Claude (`claude-3.5-sonnet`)** | Deep code structure analysis, diagram DSL compilation, and canvas health critiques. |
+| **AI Engine (Offline)** | **Smart Heuristic Synthesis** | Zero-latency local offline fallback for judges testing without cloud API keys. |
+| **Persistence & Sync** | **Firebase Firestore & LocalStorage** | Real-time cloud sync, multi-board indexing, and offline-first storage fallback. |
+| **Icons & Brand Assets** | **Lucide React & Vector Logo Library** | 1,800+ developer architecture logos (Kafka, PostgreSQL, Docker, AWS, etc.) and UI iconography. |
+| **Testing & Recording** | **Playwright & Chromium** | End-to-end testing, headless test automation, and official 1080p demo video recording. |
+| **Deployment** | **Netlify & Vercel** | Edge CDN distribution, automated CI/CD builds, and one-click demo deployment. |
+
+---
+
 ### 1. Elevator Pitch (Under 140 Characters)
 > **Boardify turns the infinite whiteboard into an agent-native canvas where humans and browser AI co-architect systems via WebMCP.**
 

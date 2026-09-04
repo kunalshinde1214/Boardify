@@ -251,20 +251,21 @@ function CanvasAppInner() {
     []
   );
 
-  const fitView = useCallback((animate = true) => {
-    const bb = getBoundingBox(nodesRef.current);
+  const fitView = useCallback((animate = true, overrideNodes?: CanvasNode[]) => {
+    const nodesToFit = overrideNodes && overrideNodes.length > 0 ? overrideNodes : nodesRef.current;
+    const bb = getBoundingBox(nodesToFit);
     if (!bb) {
       setCamera({ x: 0, y: 0, z: 1 });
       return;
     }
 
-    const padding = 120;
+    const padding = 100;
     const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const h = typeof window !== 'undefined' ? window.innerHeight : 800;
 
     const scaleX = (w - padding * 2) / (bb.width || 400);
     const scaleY = (h - padding * 2) / (bb.height || 400);
-    const targetZ = Math.min(1.4, Math.max(0.35, Math.min(scaleX, scaleY)));
+    const targetZ = Math.min(1.2, Math.max(0.45, Math.min(scaleX, scaleY)));
 
     const centerX = (bb.minX + bb.maxX) / 2;
     const centerY = (bb.minY + bb.maxY) / 2;
@@ -832,10 +833,6 @@ function CanvasAppInner() {
       }
     });
 
-    // Try registering on document.modelContext
-    const registered = registerWebMCP(tools);
-    setHasWebMCP(registered);
-
     // Hydrate shared canvas state from URL hash if present
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -856,6 +853,12 @@ function CanvasAppInner() {
       unsub();
     };
   }, [boardId]);
+
+  // Always keep WebMCP tools registration in sync with current state & HMR updates
+  useEffect(() => {
+    const registered = registerWebMCP(tools);
+    setHasWebMCP(registered);
+  }, [tools]);
 
   // Auto save on change & update board index
   useEffect(() => {
@@ -976,21 +979,21 @@ function CanvasAppInner() {
     const q = rawPrompt.toLowerCase().trim();
     addLogEntry({ toolName: 'freeform_prompt', input: { query: rawPrompt }, source: 'ui' });
 
-    if (/tidy|cluster|clean/i.test(q)) {
+    if (/^(?:tidy|cluster|untangle)$/i.test(q)) {
       animateLayout(calculateForceDirectedTargets(nodes, edges));
       showToast('Untangled canvas layout', 'ok');
       return;
     }
-    if (/timeline|sequence/i.test(q)) {
+    if (/^(?:timeline|sequence)$/i.test(q)) {
       animateLayout(calculateTimelineTargets(nodes));
       showToast('Arranged into timeline', 'ok');
       return;
     }
-    if (/export/i.test(q)) {
+    if (/^(?:export)$/i.test(q)) {
       setIsExportOpen(true);
       return;
     }
-    if (/clear|wipe/i.test(q)) {
+    if (/^(?:clear|wipe)(?:\s+canvas|\s+all)?$/i.test(q)) {
       handleClearCanvas();
       return;
     }
@@ -1004,41 +1007,76 @@ function CanvasAppInner() {
     });
 
     try {
-      const plan = await generateDynamicPlan(rawPrompt, nodes);
+      const plan = await generateDynamicPlan(rawPrompt, nodesRef.current);
       pushUndo();
 
-      const centroid = getCentroid(nodes);
-      let spawnX = centroid.x + 260;
-      let spawnY = centroid.y - 120;
+      const currentNodes = [...nodesRef.current];
+      const vpW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const vpH = typeof window !== 'undefined' ? window.innerHeight : 800;
+      const currentCamera = camera;
 
-      const createdNodeMap = new Map<string, string>(); // title -> newId
+      // Position new cluster cleanly adjacent to existing notes
+      const currentBB = getBoundingBox(currentNodes);
+      let targetStartX = 0;
+      let targetStartY = 0;
+
+      if (currentBB) {
+        targetStartX = currentBB.maxX + 60;
+        targetStartY = currentBB.minY + 20;
+      } else {
+        targetStartX = (vpW / 2 - currentCamera.x) / currentCamera.z - 120;
+        targetStartY = (vpH / 2 - currentCamera.y) / currentCamera.z - 100;
+      }
+
+      const startSpot = findFreeSpot(currentNodes, targetStartX, targetStartY, 260, 200);
+
+      const createdNodeMap = new Map<string, string>();
+      const newNodesToAdd: CanvasNode[] = [];
+      const timestamp = Date.now();
+
+      const numCols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(plan.nodes.length))));
+      const colSpacing = 280;
+      const rowSpacing = 210;
 
       plan.nodes.forEach((item, idx) => {
-        const free = findFreeSpot(nodesRef.current, spawnX, spawnY);
-        const node = handleAddNode(
-          free.x,
-          free.y,
-          item.color || 'butter',
-          item.title,
-          item.body,
-          'agent',
-          item.nodeType || 'default',
-          {
-            signType: item.signType,
-            logoType: item.logoType,
-            stamp: item.stamp,
-            fields: item.fields,
-            shapeType: item.shapeType,
-            tasks: item.tasks
-              ? item.tasks.map((t, i) => ({
-                  id: `task_${Date.now()}_${i}`,
-                  text: t.text,
-                  done: Boolean(t.done),
-                }))
-              : undefined,
-          }
-        );
-        createdNodeMap.set(item.title.toLowerCase().trim(), node.id);
+        const col = idx % numCols;
+        const row = Math.floor(idx / numCols);
+        const targetX = startSpot.x + col * colSpacing;
+        const targetY = startSpot.y + row * rowSpacing;
+        const free = findFreeSpot([...currentNodes, ...newNodesToAdd], targetX, targetY, 260, 200);
+
+        const newId = generateNodeId();
+        const nodeType = item.nodeType || 'default';
+        const width = item.nodeType === 'table' ? 260 : item.nodeType === 'heading' ? 320 : item.nodeType === 'logo' ? 140 : 230;
+
+        const newNode: CanvasNode = {
+          id: newId,
+          title: item.title,
+          body: item.body || '',
+          x: free.x,
+          y: free.y,
+          width,
+          color: item.color || 'butter',
+          author: 'agent',
+          created: timestamp + idx * 10,
+          rot: ((Math.random() * 6) - 3) * 0.4,
+          nodeType,
+          signType: item.signType,
+          logoType: item.logoType,
+          stamp: item.stamp,
+          fields: item.fields,
+          shapeType: item.shapeType,
+          tasks: item.tasks
+            ? item.tasks.map((t, i) => ({
+                id: `task_${timestamp}_${i}`,
+                text: t.text,
+                done: Boolean(t.done),
+              }))
+            : undefined,
+        };
+
+        newNodesToAdd.push(newNode);
+        createdNodeMap.set(item.title.toLowerCase().trim(), newId);
 
         const toolName =
           item.nodeType === 'table'
@@ -1052,29 +1090,54 @@ function CanvasAppInner() {
         addLogEntry({
           toolName,
           input: { title: item.title, color: item.color, nodeType: item.nodeType, fields: item.fields },
-          output: { id: node.id, x: free.x, y: free.y },
+          output: { id: newId, x: free.x, y: free.y },
           source: 'agent',
         });
-
-        spawnY += 150;
       });
 
       // Connect links
+      const newEdgesToAdd: CanvasEdge[] = [];
+      const currentEdges = [...edgesRef.current];
+
       plan.links.forEach(link => {
         const srcId = createdNodeMap.get(link.sourceTitle.toLowerCase().trim());
         const tgtId = createdNodeMap.get(link.targetTitle.toLowerCase().trim());
-        if (srcId && tgtId) {
-          const edge = handleConnectNodes(srcId, tgtId, link.label);
-          if (edge) {
+        if (srcId && tgtId && srcId !== tgtId) {
+          const exists = [...currentEdges, ...newEdgesToAdd].some(
+            e => (e.from === srcId && e.to === tgtId) || (e.from === tgtId && e.to === srcId)
+          );
+          if (!exists) {
+            const edgeId = generateEdgeId();
+            const newEdge: CanvasEdge = {
+              id: edgeId,
+              from: srcId,
+              to: tgtId,
+              label: link.label || '',
+            };
+            newEdgesToAdd.push(newEdge);
             addLogEntry({
               toolName: 'connect_nodes',
               input: { source_id: srcId, target_id: tgtId, label: link.label },
-              output: { link_id: edge.id },
+              output: { link_id: edgeId },
               source: 'agent',
             });
           }
         }
       });
+
+      // Single atomic batch state update: notes never disappear, vanish, or flicker!
+      setNodes(prev => [...prev, ...newNodesToAdd]);
+      setEdges(prev => [...prev, ...newEdgesToAdd]);
+      setSeq(prev => prev + newNodesToAdd.length + newEdgesToAdd.length);
+
+      if (newNodesToAdd.length > 0) {
+        setSelectedNodeId(newNodesToAdd[0].id);
+        setSelectedNodeIds(newNodesToAdd.map(n => n.id));
+
+        // Always smoothly frame all notes so user sees the newly created content immediately!
+        const allNodes = [...currentNodes, ...newNodesToAdd];
+        fitView(true, allNodes);
+      }
 
       if (plan._error) {
         showToast(`AI Key Notice: ${plan._error}. Used smart local synthesis.`, 'warn');
@@ -1083,11 +1146,8 @@ function CanvasAppInner() {
       } else if (plan._providerUsed === 'openai') {
         showToast(`✨ Generated with OpenAI: ${plan.summary}`, 'ok');
       } else {
-        showToast(plan.summary || `Added ${plan.nodes.length} notes and connected wires`, 'ok');
+        showToast(plan.summary || `Added ${newNodesToAdd.length} notes and connected wires`, 'ok');
       }
-      setTimeout(() => {
-        animateLayout(calculateSmartFlowTargets(nodesRef.current, edgesRef.current));
-      }, 300);
     } catch (err) {
       showToast('Failed to generate plan, please try again.', 'warn');
     } finally {

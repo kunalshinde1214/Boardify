@@ -67,9 +67,10 @@ export interface WebMCPContextActions {
 /**
  * Extracts and cleans text fields from arbitrary AI input objects, supporting all common aliases.
  */
-function extractTitleAndBody(input: Record<string, any>): { title: string; body: string } {
-  let rawTitle = input.title ?? input.label ?? input.headline ?? input.name ?? input.header ?? input.topic ?? '';
-  let rawBody = input.body ?? input.text ?? input.content ?? input.description ?? input.message ?? input.details ?? '';
+function extractTitleAndBody(input: Record<string, any> = {}): { title: string; body: string } {
+  const inp = input || {};
+  let rawTitle = inp.title ?? inp.label ?? inp.headline ?? inp.name ?? inp.header ?? inp.topic ?? '';
+  let rawBody = inp.body ?? inp.text ?? inp.content ?? inp.description ?? inp.message ?? inp.details ?? '';
 
   rawTitle = String(rawTitle || '').trim();
   rawBody = String(rawBody || '').trim();
@@ -249,12 +250,13 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
         },
       },
     },
-    run: (input: any) => {
-      const { title, body } = extractTitleAndBody(input);
+    run: (input: any = {}) => {
+      const inp = input || {};
+      const { title, body } = extractTitleAndBody(inp);
       const nodes = actions.getNodes();
 
-      let x = Number.isFinite(input.x) ? Number(input.x) : null;
-      let y = Number.isFinite(input.y) ? Number(input.y) : null;
+      let x = Number.isFinite(inp.x) ? Number(inp.x) : null;
+      let y = Number.isFinite(inp.y) ? Number(inp.y) : null;
 
       if (x === null || y === null) {
         const centroid = getCentroid(nodes);
@@ -267,12 +269,12 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
         y = free.y;
       }
 
-      const color = (input.color as NoteColor) || 'butter';
-      let nodeType = (input.nodeType as NodeType) || 'default';
-      const logoType = input.logoType || input.logo || input.brand;
-      const signType = input.signType || input.sign || input.status;
-      const stamp = input.stamp;
-      const tasks = normalizeTasks(input.tasks || input.items || input.checklist);
+      const color = (inp.color as NoteColor) || 'butter';
+      let nodeType = (inp.nodeType as NodeType) || 'default';
+      const logoType = inp.logoType || inp.logo || inp.brand;
+      const signType = inp.signType || inp.sign || inp.status;
+      const stamp = inp.stamp;
+      const tasks = normalizeTasks(inp.tasks || inp.items || inp.checklist);
 
       if (logoType && nodeType === 'default') nodeType = 'logo';
       if (signType && nodeType === 'default') nodeType = 'sign';
@@ -2346,7 +2348,116 @@ export function buildWebMCPTools(actions: WebMCPContextActions): Record<string, 
     },
   };
 
+  // Register common aliases so user and agent variations (note vs node, table, logo) work seamlessly
+  if (tools.add_idea_node) {
+    tools.add_idea_note = {
+      ...tools.add_idea_node,
+      name: 'add_idea_note',
+      description: 'Alias for add_idea_node: Create a new sticky note on the canvas.',
+    };
+    tools.add_note = {
+      ...tools.add_idea_node,
+      name: 'add_note',
+      description: 'Alias for add_idea_node: Create a new sticky note on the canvas.',
+    };
+    tools.add_sticky = {
+      ...tools.add_idea_node,
+      name: 'add_sticky',
+      description: 'Alias for add_idea_node: Create a sticky note on the canvas.',
+    };
+    tools.add_sticky_note = {
+      ...tools.add_idea_node,
+      name: 'add_sticky_note',
+      description: 'Alias for add_idea_node: Create a sticky note on the canvas.',
+    };
+  }
+
+  if (tools.add_entity_table) {
+    tools.add_table = {
+      ...tools.add_entity_table,
+      name: 'add_table',
+      description: 'Alias for add_entity_table: Create a typed SQL database table on the canvas.',
+    };
+    tools.add_erd_table = {
+      ...tools.add_entity_table,
+      name: 'add_erd_table',
+      description: 'Alias for add_entity_table: Create a typed SQL database table on the canvas.',
+    };
+  }
+
+  if (tools.add_tech_logo) {
+    tools.add_logo = {
+      ...tools.add_tech_logo,
+      name: 'add_logo',
+      description: 'Alias for add_tech_logo: Add a tech stack logo to the canvas.',
+    };
+    tools.add_logo_node = {
+      ...tools.add_tech_logo,
+      name: 'add_logo_node',
+      description: 'Alias for add_tech_logo: Add a tech stack logo to the canvas.',
+    };
+  }
+
+  if (tools.connect_nodes) {
+    tools.connect_notes = {
+      ...tools.connect_nodes,
+      name: 'connect_notes',
+      description: 'Alias for connect_nodes: Connect two notes with a wire.',
+    };
+  }
+
+  if (tools.delete_node) {
+    tools.delete_note = {
+      ...tools.delete_node,
+      name: 'delete_note',
+      description: 'Alias for delete_node: Remove a note from the canvas.',
+    };
+  }
+
+  if (tools.update_node) {
+    tools.update_note = {
+      ...tools.update_node,
+      name: 'update_note',
+      description: 'Alias for update_node: Edit an existing note on the canvas.',
+    };
+  }
+
   return tools;
+}
+
+function resolveToolName(name: string, availableMap: Map<string, any> | Record<string, any>): string {
+  const raw = String(name || '').trim();
+  const has = (n: string) => (availableMap instanceof Map ? availableMap.has(n) : Boolean(availableMap[n]));
+  if (has(raw)) return raw;
+
+  const aliasMap: Record<string, string> = {
+    add_idea_note: 'add_idea_node',
+    add_note: 'add_idea_node',
+    add_sticky: 'add_idea_node',
+    add_sticky_note: 'add_idea_node',
+    create_note: 'add_idea_node',
+    create_node: 'add_idea_node',
+    add_table: 'add_entity_table',
+    add_erd_table: 'add_entity_table',
+    create_table: 'add_entity_table',
+    add_logo: 'add_tech_logo',
+    add_logo_node: 'add_tech_logo',
+    connect_notes: 'connect_nodes',
+    connect_node: 'connect_nodes',
+    delete_note: 'delete_node',
+    update_note: 'update_node',
+    duplicate_note: 'duplicate_node',
+  };
+
+  if (aliasMap[raw] && has(aliasMap[raw])) return aliasMap[raw];
+
+  const replaced = raw.replace(/_note$/, '_node');
+  if (has(replaced)) return replaced;
+
+  const replacedNote = raw.replace(/_node$/, '_note');
+  if (has(replacedNote)) return replacedNote;
+
+  return raw;
 }
 
 // Global reference holder so tool executors always call the latest active canvas actions
@@ -2388,15 +2499,64 @@ export function registerWebMCP(tools: Record<string, WebMCPToolDef>): boolean {
           inputSchema: t.inputSchema,
         }));
       },
-      executeTool: async function (name: string, input: any = {}) {
-        const tool = this._registeredTools.get(name);
-        if (!tool) throw new Error(`WebMCP Tool "${name}" not found.`);
-        return await tool.execute(input);
+      executeTool: async function (nameOrTool: any, input: any = {}) {
+        const rawName = typeof nameOrTool === 'string' ? nameOrTool : nameOrTool?.name || '';
+        const resolvedName = resolveToolName(rawName, this._registeredTools);
+        const tool = this._registeredTools.get(resolvedName) || this._registeredTools.get(rawName);
+        if (!tool) {
+          const available = Array.from(this._registeredTools.keys()).slice(0, 10).join(', ');
+          throw new Error(`WebMCP Tool "${rawName}" not found. Available tools: ${available}...`);
+        }
+        return await tool.execute(input || {});
       },
     };
   }
 
   const mc = win.document.modelContext;
+
+  // Always ensure executeTool is available and callable with string tool names on document.modelContext
+  // This allows developers, DevTools console testers, and agent extensions to run tools by name seamlessly.
+  mc.executeTool = async function (nameOrTool: any, input: any = {}) {
+    const rawName = typeof nameOrTool === 'string' ? nameOrTool : nameOrTool?.name || '';
+    const resolvedName = resolveToolName(rawName, globalActiveTools);
+
+    const activeTool = globalActiveTools[resolvedName] || globalActiveTools[rawName];
+    if (activeTool) {
+      const start = performance.now();
+      let res: Record<string, unknown>;
+      try {
+        res = await activeTool.run(input || {});
+      } catch (err) {
+        res = { success: false, error: String(err instanceof Error ? err.message : err) };
+      }
+      const durationMs = Math.round(performance.now() - start);
+      return { ...res, _executed_via: 'WebMCP', duration_ms: durationMs };
+    }
+
+    const available = Object.keys(globalActiveTools).slice(0, 10).join(', ');
+    throw new Error(`WebMCP tool "${rawName}" not found on document.modelContext. Available: ${available}...`);
+  };
+
+  // Ensure listTools is always available on document.modelContext (even in native Chrome Canary)
+  mc.listTools = function () {
+    return Object.values(globalActiveTools).map(t => ({
+      name: t.name,
+      description: t.description,
+      parameters: Object.keys(t.inputSchema?.properties || {}).join(', ') || 'none',
+    }));
+  };
+
+  // Convenient DevTools console helper: renders a clean interactive table
+  mc.showTools = function () {
+    const list = mc.listTools();
+    if (typeof console !== 'undefined' && console.table) {
+      console.table(list);
+    }
+    return `Boardify WebMCP: ${list.length} tools registered and ready on document.modelContext.`;
+  };
+
+  // Global console shorthand
+  win.showTools = mc.showTools;
 
   // Window-level tracking set so tools are registered ONCE per browser session
   if (!win.__boardify_registered_tools) {

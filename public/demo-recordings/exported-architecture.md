@@ -1,0 +1,7 @@
+{
+  "success": true,
+  "format": "markdown",
+  "content": "# Boardify Canvas Export\n\nExported at: 2026-09-03T16:13:03.735Z\n\n## Section 1\n\n### [HUMAN] Welcome to Boardify\nThis canvas is shared — you and any WebMCP agent both have hands here.\nDrag notes, double-click empty space to add one, drag from a note's right port to link ideas.\nOpen Agent Studio on the right to trigger live missions!\n\n### [HUMAN] Humans bring taste\nJudgment, intuition, domain expertise, and a nose for the weird idea that is actually right.\n\n### [AGENT] Agents bring scale\nExhaustive branches, structured taxonomies, fast retrieval, and tireless layout rearrangement via WebMCP.\n\n## Section 2\n\n### [AGENT] Core Engine: WebMCP Protocol\nDeterministic tool execution for browser AI agents with sub-20ms latency.\n\n## Section 3\n\n### [AGENT] Next.js 16 WebMCP Host\nReact 19 App Router with dynamic SVG wire routing.\n\n## Section 4\n\n### [AGENT] Apache Kafka Event Bus\nHigh-throughput real-time message stream.\n\n## Section 5\n\n### [AGENT] Payload Valid?\nDeterministic validation rule gate before state mutation.\n\n## Section 6\n\n### [AGENT] workspaces\nRelational Entity Table\n\n## Section 7\n\n### [AGENT] canvas_nodes\nRelational Entity Table\n\n## Connections & Relationships\n\n- **Welcome to Boardify** ──(pairs with)──> **Humans bring taste**\n- **Welcome to Boardify** ──(pairs with)──> **Agents bring scale**\n",
+  "_executed_via": "WebMCP",
+  "duration_ms": 1
+}
